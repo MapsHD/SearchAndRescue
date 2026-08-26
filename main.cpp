@@ -650,26 +650,26 @@ int main()
     std::vector<char> bounding_box_stretcher_vertex_shader_source   = {};
     std::vector<char> bounding_box_stretcher_fragment_shader_source = {};
 
-    CHECK_BOOL(load_text_file(origin_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("origin.vert")));
-    CHECK_BOOL(load_text_file(origin_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("origin.frag")));
+    CHECK_BOOL(load_text_file(origin_vertex_shader_source, std::filesystem::path("assets").append("origin.vert")));
+    CHECK_BOOL(load_text_file(origin_fragment_shader_source, std::filesystem::path("assets").append("origin.frag")));
 
-    CHECK_BOOL(load_text_file(camera_target_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("camera_target.vert")));
-    CHECK_BOOL(load_text_file(camera_target_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("camera_target.frag")));
+    CHECK_BOOL(load_text_file(camera_target_vertex_shader_source, std::filesystem::path("assets").append("camera_target.vert")));
+    CHECK_BOOL(load_text_file(camera_target_fragment_shader_source, std::filesystem::path("assets").append("camera_target.frag")));
 
-    CHECK_BOOL(load_text_file(point_cloud_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("point_cloud.vert")));
-    CHECK_BOOL(load_text_file(point_cloud_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("point_cloud.frag")));
+    CHECK_BOOL(load_text_file(point_cloud_vertex_shader_source, std::filesystem::path("assets").append("point_cloud.vert")));
+    CHECK_BOOL(load_text_file(point_cloud_fragment_shader_source, std::filesystem::path("assets").append("point_cloud.frag")));
 
-    CHECK_BOOL(load_text_file(trajectory_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("trajectory.vert")));
-    CHECK_BOOL(load_text_file(trajectory_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("trajectory.frag")));
+    CHECK_BOOL(load_text_file(trajectory_vertex_shader_source, std::filesystem::path("assets").append("trajectory.vert")));
+    CHECK_BOOL(load_text_file(trajectory_fragment_shader_source, std::filesystem::path("assets").append("trajectory.frag")));
 
-    CHECK_BOOL(load_text_file(stretcher_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("stretcher.vert")));
-    CHECK_BOOL(load_text_file(stretcher_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("stretcher.frag")));
+    CHECK_BOOL(load_text_file(stretcher_vertex_shader_source, std::filesystem::path("assets").append("stretcher.vert")));
+    CHECK_BOOL(load_text_file(stretcher_fragment_shader_source, std::filesystem::path("assets").append("stretcher.frag")));
 
-    CHECK_BOOL(load_text_file(bounding_box_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("bounding_box.vert")));
-    CHECK_BOOL(load_text_file(bounding_box_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("bounding_box.frag")));
+    CHECK_BOOL(load_text_file(bounding_box_vertex_shader_source, std::filesystem::path("assets").append("bounding_box.vert")));
+    CHECK_BOOL(load_text_file(bounding_box_fragment_shader_source, std::filesystem::path("assets").append("bounding_box.frag")));
 
-    CHECK_BOOL(load_text_file(bounding_box_stretcher_vertex_shader_source, std::filesystem::path(SHADERS_DIR).append("bounding_box_stretcher.vert")));
-    CHECK_BOOL(load_text_file(bounding_box_stretcher_fragment_shader_source, std::filesystem::path(SHADERS_DIR).append("bounding_box_stretcher.frag")));
+    CHECK_BOOL(load_text_file(bounding_box_stretcher_vertex_shader_source, std::filesystem::path("assets").append("bounding_box_stretcher.vert")));
+    CHECK_BOOL(load_text_file(bounding_box_stretcher_fragment_shader_source, std::filesystem::path("assets").append("bounding_box_stretcher.frag")));
 
     glfwSetErrorCallback(ErrorCallback::GLFW);
     glfwInit();

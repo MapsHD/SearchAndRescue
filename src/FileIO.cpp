@@ -1,7 +1,6 @@
 #include <cave-traversal-tool/FileIO.h>
 
 #include <happly.h>
-#include <laszip_api.h>
 #include <spdlog/spdlog.h>
 
 bool load_text_file(std::vector<char>& output, const std::filesystem::path& path)

@@ -25,11 +25,6 @@ if (MSVC)
   add_compile_options(/utf-8)
 endif()
 
-set(REPOSITORY_DIR ${CMAKE_CURRENT_LIST_DIR})
-set(SHADERS_DIR ${REPOSITORY_DIR}/assets) 
-
-message("Shaders directory : ${SHADERS_DIR}") 
-
 set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
 
 set(GLFW_BUILD_WAYLAND   OFF CACHE BOOL "" FORCE)
@@ -44,11 +39,8 @@ set(SPDLOG_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_BENCH   OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
 
-set(LASZIP_BUILD_STATIC  ON  CACHE BOOL "" FORCE)
-
 add_subdirectory(external/glfw)
 add_subdirectory(external/spdlog)
-add_subdirectory(external/LASzip)
 
 add_executable(cave-traversal-tool main.cpp)
 
@@ -83,8 +75,7 @@ target_sources(cave-traversal-tool
 
 target_link_libraries(cave-traversal-tool
     PRIVATE
-        glfw
-        laszip3)
+        glfw)
 
 target_include_directories(cave-traversal-tool
     PRIVATE
@@ -99,10 +90,4 @@ target_include_directories(cave-traversal-tool
         external/ImGuizmo/src
         external/portable-file-dialogs
         external/happly
-        external/spdlog/include
-        external/LASzip/dll
-        external/LASzip/include/laszip)
-
-target_compile_definitions(cave-traversal-tool
-    PRIVATE
-        -DSHADERS_DIR="${SHADERS_DIR}")
+        external/spdlog/include)
