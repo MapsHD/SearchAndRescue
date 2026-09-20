@@ -5,37 +5,88 @@
 #include <glad/glad.h>
 // clang-format on
 
-uint32_t opengl_vertex_array_create_vertex_array(uint32_t vertex_buffer_id, bool has_vertex_buffer, uint32_t index_buffer_id, bool has_index_buffer, const std::vector<VertexBufferAttributeLayout>& layout)
+struct VertexArray::VertexArrayIMPL
 {
+    uint32_t id = {};
 
-    uint32_t vao_id = 0;
-    glCreateVertexArrays(1, &vao_id);
+    Buffer* vbo           = {};
+    bool    vbo_ownership = {};
 
-    if (has_index_buffer)
+    Buffer* ibo           = {};
+    bool    ibo_ownership = {};
+};
+
+VertexArray::VertexArray(Buffer* vertex_buffer, const bool vertex_buffer_ownership, Buffer* index_buffer, const bool index_buffer_ownership, const std::vector<VertexBufferAttributeLayout>& layout)
+{
+    _impl = new VertexArrayIMPL;
+
+    _impl->id            = UINT32_MAX;
+    _impl->vbo           = vertex_buffer;
+    _impl->vbo_ownership = vertex_buffer_ownership;
+    _impl->ibo           = index_buffer;
+    _impl->ibo_ownership = index_buffer_ownership;
+
+    glCreateVertexArrays(1, &_impl->id);
+
+    if (_impl->ibo)
     {
-        glVertexArrayElementBuffer(vao_id, index_buffer_id);
+        glVertexArrayElementBuffer(_impl->id, _impl->ibo->GetID());
     }
 
-    if (!has_vertex_buffer)
+    if (!_impl->vbo)
     {
-        spdlog::error("Attempt to create VAO without VBO!");
-        std::abort();
+        return;
     }
 
-    for (const auto& attribute_layout : layout)
+    for (const VertexBufferAttributeLayout& attribute_layout : layout)
     {
-        const auto location   = attribute_layout.location;
-        const auto components = attribute_layout.components;
-        const auto type       = attribute_layout.type;
-        const auto normalize  = attribute_layout.normalize;
-        const auto stride     = attribute_layout.stride;
-        const auto offset     = attribute_layout.offset;
+        const auto& [location, components, type, normalize, stride, offset] = attribute_layout;
 
-        glVertexArrayVertexBuffer(vao_id, location, vertex_buffer_id, offset, stride);
-        glEnableVertexArrayAttrib(vao_id, location);
-        glVertexArrayAttribFormat(vao_id, location, components, type, normalize, 0);
-        glVertexArrayAttribBinding(vao_id, location, location);
+        glVertexArrayVertexBuffer(_impl->id, location, _impl->vbo->GetID(), offset, stride);
+        glEnableVertexArrayAttrib(_impl->id, location);
+        glVertexArrayAttribFormat(_impl->id, location, components, type, static_cast<uint8_t>(normalize), 0);
+        glVertexArrayAttribBinding(_impl->id, location, location);
+    }
+}
+
+VertexArray::~VertexArray()
+{
+    if (_impl->ibo_ownership && _impl->ibo)
+    {
+        delete _impl->ibo;
     }
 
-    return vao_id;
+    if (_impl->vbo_ownership && _impl->vbo)
+    {
+        delete _impl->vbo;
+    }
+
+    glDeleteVertexArrays(1, &_impl->id);
+
+    delete _impl;
+}
+
+uint32_t VertexArray::GetID() const
+{
+    return _impl->id;
+}
+
+void VertexArray::Bind()
+{
+    glBindVertexArray(_impl->id);
+}
+
+void VertexArray::Unbind()
+{
+    glBindVertexArray(0);
+}
+
+void VertexArray::DrawArray(const uint32_t mode, const uint32_t vertex_count)
+{
+    glDrawArrays(mode, 0, vertex_count);
+}
+
+void VertexArray::DrawElements(const uint32_t mode, const uint32_t index_count, const uint32_t instance_count, const uint32_t base_instance)
+{
+    glDrawElementsInstancedBaseVertexBaseInstance(mode, index_count, GL_UNSIGNED_INT, nullptr, instance_count, 0, base_instance);
 }

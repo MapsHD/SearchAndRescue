@@ -1,7 +1,13 @@
 #include <cave-traversal-tool/FileIO.h>
 
+#include <glm/gtc/quaternion.hpp>
+
+#include <algorithm>
 #include <happly.h>
+#include <laszip_api.h>
+#include <limits>
 #include <spdlog/spdlog.h>
+#include <sstream>
 
 bool load_text_file(std::vector<char>& output, const std::filesystem::path& path)
 {
@@ -21,36 +27,51 @@ bool load_text_file(std::vector<char>& output, const std::filesystem::path& path
     return false;
 }
 
-bool load_trajectory_csv_mat33(const std::filesystem::path& path, std::vector<Point>& trajectory_pose_positions, std::vector<TrajectoryPoseOrientationMat33>& trajectory_pose_orientations, const size_t Nth)
+enum class TrajectoryCsvLayout
 {
-    struct CSVTrajectoryPoseMat33
+    Unknown,
+    Mat33_2Timestamps, // TS1, TS2, x, y, z, r00..r22  (14 columns)
+    Mat33_1Timestamp,  // TS1,      x, y, z, r00..r22  (13 columns)
+    Quat_2Timestamps,  // TS1, TS2, x, y, z, qx,qy,qz,qw (9 columns)
+    Quat_1Timestamp,   // TS1,      x, y, z, qx,qy,qz,qw (8 columns)
+};
+
+static size_t count_csv_columns(const std::string& line)
+{
+    size_t count = line.empty() ? 0UL : 1UL;
+
+    for (const char c : line)
+        if (c == ',')
+            count++;
+
+    return count;
+}
+
+static TrajectoryCsvLayout classify_trajectory_csv_layout(const size_t column_count)
+{
+    switch (column_count)
     {
-        uint64_t ts_lidar = 0ULL;
-        uint64_t ts_linux = 0ULL;
+    case 14:
+        return TrajectoryCsvLayout::Mat33_2Timestamps;
+    case 13:
+        return TrajectoryCsvLayout::Mat33_1Timestamp;
+    case 9:
+        return TrajectoryCsvLayout::Quat_2Timestamps;
+    case 8:
+        return TrajectoryCsvLayout::Quat_1Timestamp;
+    default:
+        return TrajectoryCsvLayout::Unknown;
+    }
+}
 
-        float x = 0.0f;
-        float y = 0.0f;
-        float z = 0.0f;
-
-        float r0 = 0.0f;
-        float r1 = 0.0f;
-        float r2 = 0.0f;
-
-        float r3 = 0.0f;
-        float r4 = 0.0f;
-        float r5 = 0.0f;
-
-        float r6 = 0.0f;
-        float r7 = 0.0f;
-        float r8 = 0.0f;
-    };
-
+bool load_trajectory_csv(const std::filesystem::path& path, std::vector<Point>& trajectory_pose_positions, std::vector<TrajectoryPoseOrientationMat33>& trajectory_pose_orientations, const size_t Nth)
+{
     trajectory_pose_positions    = {};
     trajectory_pose_orientations = {};
 
     if (std::ifstream file = std::ifstream(path))
     {
-        std::vector<CSVTrajectoryPoseMat33> csv_poses{};
+        TrajectoryCsvLayout layout = TrajectoryCsvLayout::Unknown;
 
         size_t      line_index = 0;
         std::string line{};
@@ -67,132 +88,78 @@ bool load_trajectory_csv_mat33(const std::filesystem::path& path, std::vector<Po
                 continue;
             }
 
-            std::stringstream      string_stream(line);
-            CSVTrajectoryPoseMat33 csv_pose{};
-
-            std::getline(string_stream, token, ',');
-            csv_pose.ts_lidar = std::stoull(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.ts_linux = std::stoull(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.x = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.y = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.z = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r0 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r1 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r2 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r3 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r4 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r5 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r6 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r7 = std::stof(token);
-
-            std::getline(string_stream, token, ',');
-            csv_pose.r8 = std::stof(token);
-
-            csv_poses.push_back(csv_pose);
-            line_index++;
-        }
-
-        trajectory_pose_positions    = {};
-        trajectory_pose_orientations = {};
-
-        for (const auto& csv_pose : csv_poses)
-        {
-            Point point{};
-            point.position.x = csv_pose.x;
-            point.position.y = csv_pose.y;
-            point.position.z = csv_pose.z;
-
-            TrajectoryPoseOrientationMat33 orientation{};
-            orientation.orientation = glm::mat3(
-                csv_pose.r0, csv_pose.r1, csv_pose.r2,
-                csv_pose.r3, csv_pose.r4, csv_pose.r5,
-                csv_pose.r6, csv_pose.r7, csv_pose.r8);
-
-            trajectory_pose_positions.push_back(point);
-            trajectory_pose_orientations.push_back(orientation);
-        }
-
-        return true;
-    }
-
-    return false;
-}
-
-bool load_trajectory_bin_mat33(const std::filesystem::path& path, std::vector<Point>& trajectory_pose_positions, std::vector<TrajectoryPoseOrientationMat33>& trajectory_pose_orientations, const size_t Nth)
-{
-    trajectory_pose_positions    = {};
-    trajectory_pose_orientations = {};
-
-    if (std::ifstream file = std::ifstream(path, std::ios::in | std::ios::binary))
-    {
-        uint32_t trajectory_length = 0;
-        file.read(reinterpret_cast<char*>(&trajectory_length), sizeof(uint32_t));
-
-        std::vector<Point> all_positions(trajectory_length);
-        file.read(reinterpret_cast<char*>(all_positions.data()), trajectory_length * sizeof(Point));
-
-        std::vector<TrajectoryPoseOrientationMat33> all_orientations(trajectory_length);
-        file.read(reinterpret_cast<char*>(all_orientations.data()), trajectory_length * sizeof(TrajectoryPoseOrientationMat33));
-
-        size_t index = 0;
-        for (uint32_t i = 0; i < trajectory_length; ++i)
-        {
-            if (Nth > 1 && (index % Nth) != 0)
+            if (layout == TrajectoryCsvLayout::Unknown)
             {
-                ++index;
-                continue;
+                layout = classify_trajectory_csv_layout(count_csv_columns(line));
+
+                if (layout == TrajectoryCsvLayout::Unknown)
+                {
+                    spdlog::error("Trajectory CSV {} has an unsupported column count ({}); expected 8, 9, 13 or 14 columns", path.string(), count_csv_columns(line));
+                    return false;
+                }
             }
 
-            trajectory_pose_positions.push_back(all_positions[i]);
-            trajectory_pose_orientations.push_back(all_orientations[i]);
-            ++index;
+            const bool is_quaternion      = (layout == TrajectoryCsvLayout::Quat_2Timestamps || layout == TrajectoryCsvLayout::Quat_1Timestamp);
+            const bool has_two_timestamps = (layout == TrajectoryCsvLayout::Mat33_2Timestamps || layout == TrajectoryCsvLayout::Quat_2Timestamps);
+
+            try
+            {
+                std::stringstream string_stream(line);
+
+                // Timestamps are only ever skipped - pose loading does not use them.
+                std::getline(string_stream, token, ',');
+                if (has_two_timestamps)
+                    std::getline(string_stream, token, ',');
+
+                Point point{};
+
+                std::getline(string_stream, token, ',');
+                point.position.x = std::stof(token);
+
+                std::getline(string_stream, token, ',');
+                point.position.y = std::stof(token);
+
+                std::getline(string_stream, token, ',');
+                point.position.z = std::stof(token);
+
+                TrajectoryPoseOrientationMat33 orientation{};
+
+                if (is_quaternion)
+                {
+                    float q[4] = {};
+                    for (float& value : q)
+                    {
+                        std::getline(string_stream, token, ',');
+                        value = std::stof(token);
+                    }
+
+                    orientation.orientation = glm::mat3_cast(glm::quat(q[0], q[1], q[2], q[3]));
+                }
+                else
+                {
+                    float r[9] = {};
+                    for (float& value : r)
+                    {
+                        std::getline(string_stream, token, ',');
+                        value = std::stof(token);
+                    }
+
+                    orientation.orientation = glm::mat3(
+                        r[0], r[1], r[2],
+                        r[3], r[4], r[5],
+                        r[6], r[7], r[8]);
+                }
+
+                trajectory_pose_positions.push_back(point);
+                trajectory_pose_orientations.push_back(orientation);
+            }
+            catch (const std::exception& e)
+            {
+                spdlog::warn("Skipping malformed trajectory CSV line {}: {}", line_index, e.what());
+            }
+
+            line_index++;
         }
-
-        return true;
-    }
-
-    return false;
-}
-
-bool save_trajectory_bin_mat33(const std::filesystem::path& path, const std::vector<Point>& trajectory_pose_positions, const std::vector<TrajectoryPoseOrientationMat33>& trajectory_pose_orientations)
-{
-    if (std::ofstream file = std::ofstream(path, std::ios::out | std::ios::binary))
-    {
-        const uint32_t trajectory_length = static_cast<uint32_t>(trajectory_pose_positions.size());
-
-        const size_t positions_size          = trajectory_length * sizeof(Point);
-        const size_t orientations_mat33_size = trajectory_length * sizeof(TrajectoryPoseOrientationMat33);
-
-        const Point* const                          positions          = trajectory_pose_positions.data();
-        const TrajectoryPoseOrientationMat33* const orientations_mat33 = trajectory_pose_orientations.data();
-
-        file.write(reinterpret_cast<const char* const>(&trajectory_length), sizeof(uint32_t));
-        file.write(reinterpret_cast<const char* const>(positions), positions_size);
-        file.write(reinterpret_cast<const char* const>(orientations_mat33), orientations_mat33_size);
 
         return true;
     }
@@ -268,133 +235,89 @@ bool load_stretcher_ply(const std::filesystem::path& path, std::vector<ColorPoin
     return true;
 }
 
-bool load_stretcher_bin(const std::filesystem::path& path, std::vector<ColorPoint>& points, std::vector<uint32_t>& indices)
+bool load_cave_laz(const std::filesystem::path& path, std::vector<PointIntensity>& points)
 {
-    points  = {};
-    indices = {};
-
-    if (std::ifstream file = std::ifstream(path, std::ios::in | std::ios::binary))
-    {
-        points  = {};
-        indices = {};
-
-        uint32_t vertices_count = 0;
-        uint32_t indices_count  = 0;
-
-        file.read(reinterpret_cast<char*>(&vertices_count), sizeof(uint32_t));
-        file.read(reinterpret_cast<char*>(&indices_count), sizeof(uint32_t));
-
-        points.resize(vertices_count);
-        indices.resize(indices_count);
-
-        file.read(reinterpret_cast<char*>(points.data()), vertices_count * sizeof(ColorPoint));
-        file.read(reinterpret_cast<char*>(indices.data()), indices_count * sizeof(uint32_t));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool save_stretcher_bin(const std::filesystem::path& path, const std::vector<ColorPoint>& points, const std::vector<uint32_t>& indices)
-{
-    if (std::ofstream file = std::ofstream(path, std::ios::out | std::ios::binary))
-    {
-        const uint32_t stretcher_vertices_count = points.size();
-        const uint32_t stretcher_indices_count  = indices.size();
-
-        const ColorPoint* const stretcher_vertices = points.data();
-        const uint32_t* const   stretcher_indices  = indices.data();
-
-        file.write(reinterpret_cast<const char* const>(&stretcher_vertices_count), sizeof(uint32_t));
-        file.write(reinterpret_cast<const char* const>(&stretcher_indices_count), sizeof(uint32_t));
-        file.write(reinterpret_cast<const char* const>(stretcher_vertices), stretcher_vertices_count * sizeof(ColorPoint));
-        file.write(reinterpret_cast<const char* const>(stretcher_indices), stretcher_indices_count * sizeof(uint32_t));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool load_cave_ply(const std::filesystem::path& path, std::vector<NormalPoint>& points)
-{
-    points = {};
-
-    happly::PLYData ply(path.string());
-
-    if (!ply.hasElement("vertex") || ply.getVertexPositions().empty())
-    {
-        spdlog::error("PLY file {} has no vertex positions!", path.string());
-        return false;
-    }
-
-    const auto& vertexNames = ply.getElement("vertex").getPropertyNames();
-    if (!(std::count(vertexNames.begin(), vertexNames.end(), "nx") &&
-          std::count(vertexNames.begin(), vertexNames.end(), "ny") &&
-          std::count(vertexNames.begin(), vertexNames.end(), "nz")))
-    {
-        spdlog::error("PLY file {} has no vertex normals!", path.string());
-        return false;
-    }
-
-    const auto positions = ply.getVertexPositions();
-
-    const auto nx = ply.getElement("vertex").getProperty<float>("nx");
-    const auto ny = ply.getElement("vertex").getProperty<float>("ny");
-    const auto nz = ply.getElement("vertex").getProperty<float>("nz");
-
     points.clear();
-    points.reserve(positions.size());
 
-    for (size_t i = 0; i < positions.size(); i++)
+    laszip_POINTER laszip_reader = nullptr;
+    if (laszip_create(&laszip_reader))
     {
-        NormalPoint pt;
+        spdlog::error("Failed to create LASzip reader");
+        return false;
+    }
 
-        pt.position.x = static_cast<float>(positions[i][0]);
-        pt.position.y = static_cast<float>(positions[i][1]);
-        pt.position.z = static_cast<float>(positions[i][2]);
+    laszip_BOOL is_compressed = 0;
+    if (laszip_open_reader(laszip_reader, path.string().c_str(), &is_compressed))
+    {
+        laszip_CHAR* error_msg = nullptr;
+        laszip_get_error(laszip_reader, &error_msg);
+        spdlog::error("Failed to open LAZ/LAS file: {} - {}", path.string(), error_msg ? error_msg : "Unknown error");
+        laszip_destroy(laszip_reader);
+        return false;
+    }
 
-        pt.normal.x = nx[i];
-        pt.normal.y = ny[i];
-        pt.normal.z = nz[i];
+    laszip_header_struct* header = nullptr;
+    if (laszip_get_header_pointer(laszip_reader, &header))
+    {
+        spdlog::error("Failed to get LASzip header pointer");
+        laszip_close_reader(laszip_reader);
+        laszip_destroy(laszip_reader);
+        return false;
+    }
+
+    laszip_I64 num_points = (header->number_of_point_records ? header->number_of_point_records : header->extended_number_of_point_records);
+
+    laszip_point_struct* point = nullptr;
+    if (laszip_get_point_pointer(laszip_reader, &point))
+    {
+        spdlog::error("Failed to get LASzip point pointer");
+        laszip_close_reader(laszip_reader);
+        laszip_destroy(laszip_reader);
+        return false;
+    }
+
+    spdlog::info("Loading LAZ file '{}': {} points (compressed: {})", path.string(), num_points, is_compressed ? "yes" : "no");
+
+    points.reserve(static_cast<size_t>(num_points));
+
+    const double x_scale  = header->x_scale_factor;
+    const double y_scale  = header->y_scale_factor;
+    const double z_scale  = header->z_scale_factor;
+    const double x_offset = header->x_offset;
+    const double y_offset = header->y_offset;
+    const double z_offset = header->z_offset;
+
+    laszip_U16 min_intensity = std::numeric_limits<laszip_U16>::max();
+    laszip_U16 max_intensity = std::numeric_limits<laszip_U16>::min();
+
+    for (laszip_I64 i = 0; i < num_points; ++i)
+    {
+        if (laszip_read_point(laszip_reader))
+        {
+            spdlog::error("Failed to read point at index {}", i);
+            break;
+        }
+
+        min_intensity = std::min(min_intensity, point->intensity);
+        max_intensity = std::max(max_intensity, point->intensity);
+
+        PointIntensity pt{};
+        pt.position.x = static_cast<float>(point->X * x_scale + x_offset);
+        pt.position.y = static_cast<float>(point->Y * y_scale + y_offset);
+        pt.position.z = static_cast<float>(point->Z * z_scale + z_offset);
+        pt.intensity  = static_cast<float>(point->intensity); // normalized to [0, 1] below once min/max are known across the whole file
 
         points.push_back(pt);
     }
 
-    return true;
-}
+    laszip_close_reader(laszip_reader);
+    laszip_destroy(laszip_reader);
 
-bool load_cave_bin(const std::filesystem::path& path, std::vector<NormalPoint>& points)
-{
-    points = {};
+    const float intensity_range = static_cast<float>(max_intensity) - static_cast<float>(min_intensity);
+    for (PointIntensity& pt : points)
+        pt.intensity = (intensity_range > 0.0f) ? (pt.intensity - static_cast<float>(min_intensity)) / intensity_range : 1.0f;
 
-    if (std::ifstream file = std::ifstream(path, std::ios::in | std::ios::binary))
-    {
-        uint32_t vertices_count = 0;
-        file.read(reinterpret_cast<char*>(&vertices_count), sizeof(uint32_t));
+    spdlog::info("Loaded {} points from LAZ file (intensity range [{}, {}])", points.size(), min_intensity, max_intensity);
 
-        points.resize(vertices_count);
-        file.read(reinterpret_cast<char*>(points.data()), vertices_count * sizeof(NormalPoint));
-
-        return true;
-    }
-
-    return false;
-}
-
-bool save_cave_bin(const std::filesystem::path& path, const std::vector<NormalPoint>& points)
-{
-    if (std::ofstream file = std::ofstream(path, std::ios::out | std::ios::binary))
-    {
-        const uint32_t           vertices_count = points.size();
-        const NormalPoint* const vertices       = points.data();
-
-        file.write(reinterpret_cast<const char* const>(&vertices_count), sizeof(uint32_t));
-        file.write(reinterpret_cast<const char* const>(vertices), vertices_count * sizeof(NormalPoint));
-
-        return true;
-    }
-
-    return false;
+    return !points.empty();
 }

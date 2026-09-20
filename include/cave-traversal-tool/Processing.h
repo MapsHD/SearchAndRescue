@@ -1,20 +1,20 @@
 #pragma once
 
-#include <cave-traversal-tool/Structures.h>
+#include <cave-traversal-tool/PointCloud.h>
 
 glm::ivec3 calculate_bucket_id(const glm::vec3& p, const float E, const bool use_centered);
 
-void decimate(const std::vector<NormalPoint>& in, std::vector<NormalPoint>& out, const size_t D);
+void decimate(const std::vector<PointIntensity>& in, std::vector<PointIntensity>& out, const size_t D);
 
 void bucketize_point_cloud(
-    const std::vector<NormalPoint>& points,
-    PointCloudBucket&               out_buckets,
-    const float                     E,
-    const size_t                    D,
-    const size_t                    L,
-    const size_t                    N,
-    const bool                      use_centered,
-    const bool                      mark_draw);
+    const std::vector<PointIntensity>& points,
+    PointCloudBucket&                  out_buckets,
+    const float                        E,
+    const size_t                       D,
+    const size_t                       L,
+    const size_t                       N,
+    const bool                         use_centered,
+    const bool                         mark_draw);
 
 OBB aabb_to_obb(const AABB& aabb, const glm::mat4& transform);
 

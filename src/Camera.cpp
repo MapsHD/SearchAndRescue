@@ -26,7 +26,8 @@ void Camera::rotate(double dx, double dy)
     offset = glm::vec3(rot_v * rot_h * glm::vec4(offset, 1.0f));
 
     glm::vec3 new_forward = glm::normalize(-offset);
-    float     pitch       = glm::degrees(glm::asin(new_forward.y));
+    // float     pitch       = glm::degrees(glm::asin(new_forward.y));
+    float pitch = glm::degrees(glm::asin(glm::clamp(glm::dot(new_forward, up), -1.0f, 1.0f)));
 
     if (pitch < 89.0f && pitch > -89.0f)
     {

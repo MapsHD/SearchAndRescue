@@ -7,8 +7,7 @@ PROJECT_DIRECTORY = os.path.join(os.path.abspath(os.path.dirname(__file__)))
 
 FILE_LOCATIONS = [os.path.join(PROJECT_DIRECTORY, 'src'),
                   os.path.join(PROJECT_DIRECTORY, 'assets'),
-                  os.path.join(PROJECT_DIRECTORY, 'include'),
-                  os.path.join(PROJECT_DIRECTORY, 'from_hdmapping')]
+                  os.path.join(PROJECT_DIRECTORY, 'include')]
 
 FILE_EXTENSIONS = ['.cpp',
                    '.hpp',
