@@ -19,9 +19,6 @@
 [submodule "external/ImGuizmo"]
 	path = external/ImGuizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
-[submodule "external/eigen"]
-	path = external/eigen
-	url = https://gitlab.com/libeigen/eigen.git
 [submodule "external/LASzip"]
 	path = external/LASzip
 	url = https://github.com/LASzip/LASzip.git

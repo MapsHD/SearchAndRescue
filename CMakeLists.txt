@@ -25,8 +25,6 @@ if (MSVC)
   add_compile_options(/utf-8)
 endif()
 
-set(BUILD_SHARED_LIBS    OFF CACHE BOOL "" FORCE)
-
 set(GLFW_BUILD_WAYLAND   OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_X11       ON  CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS      OFF CACHE BOOL "" FORCE)
@@ -39,8 +37,11 @@ set(SPDLOG_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_BENCH   OFF CACHE BOOL "" FORCE)
 set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
 
+set(LASZIP_BUILD_STATIC  ON  CACHE BOOL "" FORCE)
+
 add_subdirectory(external/glfw)
 add_subdirectory(external/spdlog)
+add_subdirectory(external/LASzip)
 
 add_executable(cave-traversal-tool main.cpp)
 
@@ -51,13 +52,10 @@ target_sources(cave-traversal-tool
         src/Camera.cpp
         src/ErrorCallbacks.cpp
         src/FileIO.cpp
-        src/GPUData.cpp
-        src/Helpers.cpp
         src/Processing.cpp
         src/Program.cpp
         src/VertexArray.cpp
-        from_hdmapping/pair_wise_iterative_closest_point.cpp
-        from_hdmapping/hash_utils.cpp
+        src/Shaders.cpp
     PRIVATE
         external/glad/src/glad.c
         external/imgui/imgui_demo.cpp
@@ -77,17 +75,32 @@ target_link_libraries(cave-traversal-tool
     PRIVATE
         glfw)
 
+if(WIN32)
+    target_link_libraries(cave-traversal-tool
+        PRIVATE
+            laszip3
+            laszip_api3
+    )
+else()
+    target_link_libraries(cave-traversal-tool
+        PRIVATE
+            laszip
+            laszip_api
+    )
+endif()
+
 target_include_directories(cave-traversal-tool
     PRIVATE
         include
     PRIVATE
-        external/eigen
+        external/glm
         external/glfw/include
         external/glad/include
-        external/glm
+        external/spdlog/include
         external/imgui
         external/imgui/backends
         external/ImGuizmo/src
         external/portable-file-dialogs
         external/happly
-        external/spdlog/include)
+        external/LASzip/include/laszip
+        external/LASzip/dll)

@@ -18,7 +18,7 @@ glm::ivec3 calculate_bucket_id(const glm::vec3& p, const float E, const bool use
         static_cast<int>(std::floor(scaled.z)));
 }
 
-void decimate(const std::vector<NormalPoint>& in, std::vector<NormalPoint>& out, const size_t D)
+void decimate(const std::vector<PointIntensity>& in, std::vector<PointIntensity>& out, const size_t D)
 {
     out.clear();
     if (D <= 1)
@@ -39,14 +39,14 @@ void decimate(const std::vector<NormalPoint>& in, std::vector<NormalPoint>& out,
 }
 
 void bucketize_point_cloud(
-    const std::vector<NormalPoint>& points,
-    PointCloudBucket&               out_buckets,
-    const float                     E,
-    const size_t                    D,
-    const size_t                    L,
-    const size_t                    N,
-    const bool                      use_centered,
-    const bool                      mark_draw)
+    const std::vector<PointIntensity>& points,
+    PointCloudBucket&                  out_buckets,
+    const float                        E,
+    const size_t                       D,
+    const size_t                       L,
+    const size_t                       N,
+    const bool                         use_centered,
+    const bool                         mark_draw)
 {
     out_buckets.clear();
 
