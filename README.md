@@ -85,3 +85,12 @@ explorer.exe .
     - 4. Use only when auto play is disabled (it is hard to use guizmo when it is moving) - you can adjust object orientation at current pose to manually fit it into surrounding 
 
 ![](docs/NEW_9.png)
+
+## Multi-viewport
+
+- In Viewports section:
+    - 1. Enable 1, 2 or 4 viewports
+    - 2. For viewports 1, 2 and 3 you can lock camera to given axis
+    - 3. Viewport 0 is locked to free camera
+
+![](docs/NEW_10.png)
