@@ -1,12 +1,6 @@
 # SearchAndRescue
 
-## Download the data:
-
-You can download data used in this README from [Google drive](https://drive.google.com/drive/folders/18n5jOMeG7KuBFmcrc1OC0CYmQhiqvMrl?usp=sharing)
-
 ## Download, build and run:
-
-- NOTE: **assets** directory MUST be in directory that project is ran from - if you wish to run the project by double clicking the built **exe** file you must copy assets **directory** to the location of **cave-traversal-tool.exe**
 
 ``` bash
 # Download :
