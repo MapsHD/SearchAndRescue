@@ -134,6 +134,16 @@ static uint32_t g_trajectory_index                     = 0;
 // gizmo
 static bool g_modify_current_pose_with_gizmo = false;
 
+// lock viewport 0 camera target to current trajectory pose
+static bool g_lock_viewport0_target_to_trajectory = false;
+
+static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
+{
+    const glm::vec3 offset = cam.position - cam.target;
+    cam.target             = pose_pos;
+    cam.position           = pose_pos + offset;
+}
+
 static inline bool open_single_file_with_pfd(const std::string& title, const std::string& filter_description, const std::string& filter, std::string& out)
 {
     const std::vector<std::string> result = pfd::open_file(
@@ -462,8 +472,18 @@ int main()
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetWindowSizeCallback(window, size_callback);
 
-    Camera camera{};
-    glfwSetWindowUserPointer(window, &camera);
+    MultiViewContext ctx{};
+    ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
+    ctx.cameras[1].position = glm::vec3(-10.0f, 10.0f, 10.0f);
+    ctx.cameras[2].position = glm::vec3(10.0f, -10.0f, 10.0f);
+    ctx.cameras[3].position = glm::vec3(-10.0f, -10.0f, 10.0f);
+    for (int i = 0; i < MultiViewContext::MAX_CAMERAS; ++i)
+    {
+        Viewport vp               = ctx.viewport_for(i);
+        ctx.cameras[i].viewport_w = static_cast<float>(vp.w);
+        ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
+    }
+    glfwSetWindowUserPointer(window, &ctx);
 
     glfwMakeContextCurrent(window);
 
@@ -508,15 +528,20 @@ int main()
         int32_t width  = 0;
         int32_t height = 0;
         glfwGetWindowSize(window, &width, &height);
+        ctx.window_width  = width;
+        ctx.window_height = height;
+
+        for (int i = 0; i < MultiViewContext::MAX_CAMERAS; ++i)
+        {
+            Viewport vp               = ctx.viewport_for(i);
+            ctx.cameras[i].viewport_w = static_cast<float>(vp.w);
+            ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
+        }
 
         glViewport(0, 0, width, height);
 
         glClearColor(g_clear_color.x, g_clear_color.y, g_clear_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glm::mat4 projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(width), static_cast<float>(height), 0.1f, 1000.0f);
-        glm::mat4 view       = camera.get_view();
-        glm::mat4 MVP        = projection * view;
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -538,9 +563,6 @@ int main()
         const bool can_draw_stretcher      = g_stretcher_vertices.size() && g_stretcher_indices.size();
         const bool can_draw_cave           = g_buckets.size();
         const bool can_draw_bounding_boxes = g_buckets.size();
-
-        std::array<glm::vec4, 6> frustum{};
-        compute_camera_frustum_planes(view, projection, frustum);
 
         size_t max_lod_count = 0;
         for (auto& [ID, bucket] : g_buckets)
@@ -597,6 +619,90 @@ int main()
                 ImGui::Text("g_cpu_time_draw_stretcher_ms         : %.3f ms", g_cpu_time_draw_stretcher_ms);
                 ImGui::Text("g_cpu_time_draw_cave_buckets_ms      : %.3f ms", g_cpu_time_draw_cave_buckets_ms);
                 ImGui::Text("g_cpu_time_draw_cave_buckets_bbox_ms : %.3f ms", g_cpu_time_draw_cave_buckets_bbox_ms);
+                ImGui::TreePop();
+            }
+
+            ImGui::Separator();
+            if (ImGui::TreeNode("Viewport"))
+            {
+                int count = static_cast<int>(ctx.active_count);
+                if (ImGui::RadioButton("1 (single)", &count, 1))
+                {
+                    ctx.active_count = ViewportCount::ONE;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("2 (L/R split)", &count, 2))
+                {
+                    ctx.active_count = ViewportCount::TWO;
+                }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("4 (2x2 grid)", &count, 4))
+                {
+                    ctx.active_count = ViewportCount::FOUR;
+                }
+
+                static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
+
+                for (int i = 1; i <= 3; ++i)
+                {
+                    if (i >= static_cast<int>(ctx.active_count))
+                    {
+                        continue;
+                    }
+
+                    ImGui::Separator();
+                    ImGui::Text("Viewport %d", i + 1);
+
+                    int mode = static_cast<int>(ctx.camera_modes[i]);
+                    if (ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
+                    {
+                        CameraMode old_mode = ctx.camera_modes[i];
+                        ctx.camera_modes[i] = static_cast<CameraMode>(mode);
+                        if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
+                        {
+                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                        }
+                        else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
+                        {
+                            ctx.cameras[i].near_plane = 0.1f;
+                            ctx.cameras[i].far_plane  = 1000.0f;
+                            unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
+                        }
+                    }
+                    ImGui::SameLine();
+                    ImGui::Text("camera");
+
+                    if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+                    {
+                        float old_dist = ctx.view_axis_distance[i];
+                        if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                        {
+                            float delta               = ctx.view_axis_distance[i] - old_dist;
+                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
+                            ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                        }
+
+                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
+                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+
+                        if (ctx.cameras[i].near_plane < 0.01f)
+                        {
+                            ctx.cameras[i].near_plane = 0.01f;
+                        }
+                        if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
+                        {
+                            ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
+                        }
+
+                        if (ImGui::Button(("Reset planes (+-1.5m)##" + std::to_string(i)).c_str()))
+                        {
+                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                        }
+                    }
+                }
+
                 ImGui::TreePop();
             }
 
@@ -859,6 +965,21 @@ int main()
 
         ImGui::Checkbox("g_modify_current_pose_with_gizmo", &g_modify_current_pose_with_gizmo);
 
+        ImGui::Separator();
+        ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
+        ImGui::SameLine();
+        if (ImGui::Button("Snap"))
+        {
+            if (g_trajectory_positions.size())
+            {
+                snap_camera_target_to_trajectory(ctx.cameras[0], g_trajectory_positions[g_trajectory_index].position);
+            }
+        }
+        if (g_lock_viewport0_target_to_trajectory)
+        {
+            ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
+        }
+
         ImGui::End();
 
         if (g_modify_current_pose_with_gizmo)
@@ -877,10 +998,19 @@ int main()
 
             glm::mat4 stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
 
+            Viewport vp0    = ctx.viewport_for(0);
+            float    rect_x = static_cast<float>(vp0.x);
+            float    rect_y = static_cast<float>(height - vp0.y - vp0.h);
+            float    rect_w = static_cast<float>(vp0.w);
+            float    rect_h = static_cast<float>(vp0.h);
+
+            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(55.0f), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
+            glm::mat4 gizmo_view = ctx.cameras[0].get_view();
+
             ImGuizmo::BeginFrame();
             ImGuizmo::SetOrthographic(false);
             ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
-            ImGuizmo::SetRect(0, 0, width, height);
+            ImGuizmo::SetRect(rect_x, rect_y, rect_w, rect_h);
 
             float objectMatrix[16] =
                 {1, 0, 0, 0,
@@ -891,8 +1021,8 @@ int main()
             std::memcpy(objectMatrix, glm::value_ptr(stretcher_pose), sizeof(glm::mat4));
 
             ImGuizmo::Manipulate(
-                glm::value_ptr(view),
-                glm::value_ptr(projection),
+                glm::value_ptr(gizmo_view),
+                glm::value_ptr(gizmo_proj),
                 ImGuizmo::TRANSLATE | ImGuizmo::ROTATE,
                 ImGuizmo::LOCAL,
                 objectMatrix);
@@ -914,6 +1044,32 @@ int main()
                 glNamedBufferSubData(g_trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * g_trajectory_index, sizeof(glm::vec3), &g_trajectory_positions[g_trajectory_index].position);
             }
         }
+        // VIEWPORT DIVIDER LINES
+        {
+            int vp_count = static_cast<int>(ctx.active_count);
+            if (vp_count >= 2)
+            {
+                ImDrawList* dl  = ImGui::GetBackgroundDrawList();
+                ImU32       col = IM_COL32(180, 180, 180, 200);
+
+                // Vertical center line for modes 2 and 4
+                dl->AddLine(
+                    ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
+                    ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
+                    col,
+                    1.0f);
+
+                // Horizontal center line for mode 4 only
+                if (vp_count == 4)
+                {
+                    dl->AddLine(
+                        ImVec2(0.0f, static_cast<float>(height) * 0.5f),
+                        ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                        col,
+                        1.0f);
+                }
+            }
+        }
 
         ImGui::Render();
 
@@ -928,341 +1084,387 @@ int main()
             bool new_click     = mouse_pressed && !prev_mouse_pressed && ctrl_pressed;
             prev_mouse_pressed = mouse_pressed;
 
-            if (new_click)
+            if (new_click && !ImGui::GetIO().WantCaptureMouse)
             {
-                PointCloudRecord* picked_record = nullptr;
-                glm::ivec3        picked_id{};
-                glm::vec3         camera_pos     = camera.position;
-                glm::vec3         camera_forward = glm::normalize(camera.target - camera.position);
-
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
 
-                int width, height;
-                glfwGetFramebufferSize(window, &width, &height);
+                int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
+                if (pick_idx >= 0)
+                {
+                    Camera&  pick_cam = ctx.cameras[pick_idx];
+                    Viewport vp       = ctx.viewport_for(pick_idx);
 
-                float x_ndc = (2.0f * static_cast<float>(mouse_x) / width) - 1.0f;
-                float y_ndc = 1.0f - (2.0f * static_cast<float>(mouse_y) / height);
+                    double local_x    = mouse_x - vp.x;
+                    double local_gl_y = (static_cast<double>(height) - mouse_y) - vp.y;
 
-                glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
-                glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
-                ray_eye.z         = -1.0f;
-                ray_eye.w         = 0.0f;
+                    float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
+                    float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                glm::vec3 ray_dir      = glm::normalize(glm::vec3(glm::inverse(view) * ray_eye));
-                float     closest_dist = std::numeric_limits<float>::max();
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_view       = pick_cam.get_view();
 
-                const float PICK_RADIUS = 0.1f;
+                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
+                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
+                    ray_eye.z         = -1.0f;
+                    ray_eye.w         = 0.0f;
+
+                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
+                    glm::vec3 camera_pos     = pick_cam.position;
+                    glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
+
+                    PointCloudRecord* picked_record = nullptr;
+                    glm::ivec3        picked_id{};
+                    float             closest_dist = std::numeric_limits<float>::max();
+
+                    const float PICK_RADIUS = 0.1f;
+
+                    for (auto& [ID, bucket] : g_buckets)
+                    {
+                        glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
+                        glm::vec3 to_center = center - camera_pos;
+
+                        if (glm::dot(to_center, camera_forward) <= 0.0f)
+                        {
+                            continue;
+                        }
+
+                        if (g_use_fine_picking)
+                        {
+                            PointCloudLOD* lod = bucket.lods;
+                            while (lod->next)
+                            {
+                                lod = lod->next;
+                            }
+
+                            // check all points in last LOD
+                            for (const auto& p : lod->points)
+                            {
+                                const glm::vec3& point    = p.position;
+                                glm::vec3        diff     = point - camera_pos;
+                                float            proj_len = glm::dot(diff, ray_dir);
+
+                                if (proj_len >= closest_dist)
+                                    continue;
+
+                                glm::vec3 closest_point = camera_pos + ray_dir * proj_len;
+                                float     dist_to_ray   = glm::length(point - closest_point);
+
+                                if (dist_to_ray <= PICK_RADIUS)
+                                {
+                                    closest_dist  = proj_len;
+                                    picked_record = &bucket;
+                                    picked_id     = ID;
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // simple bounding-box picking using record extent
+                            glm::vec3 bmin = bucket.aabb.min;
+                            glm::vec3 bmax = bucket.aabb.max;
+
+                            float tmin = 0.0f, tmax = 0.0f;
+
+                            for (int i = 0; i < 3; ++i)
+                            {
+                                if (std::abs(ray_dir[i]) < 1e-6f)
+                                {
+                                    if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
+                                    {
+                                        tmin = tmax = -1.0f;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    float invD = 1.0f / ray_dir[i];
+                                    float t0   = (bmin[i] - camera_pos[i]) * invD;
+                                    float t1   = (bmax[i] - camera_pos[i]) * invD;
+                                    if (t0 > t1)
+                                        std::swap(t0, t1);
+                                    tmin = (i == 0) ? t0 : std::max(tmin, t0);
+                                    tmax = (i == 0) ? t1 : std::min(tmax, t1);
+                                }
+                            }
+
+                            if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
+                            {
+                                closest_dist  = tmin;
+                                picked_record = &bucket;
+                                picked_id     = ID;
+                            }
+                        }
+                    }
+
+                    if (picked_record)
+                    {
+                        spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
+
+                        glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                        glm::vec3 offset  = pick_cam.position - pick_cam.target;
+                        pick_cam.target   = center;
+                        pick_cam.position = pick_cam.target + offset;
+                    }
+                    else
+                    {
+                        spdlog::warn("Picking missed ...");
+                    }
+                }
+            }
+        }
+
+        auto draw_scene = [&](const Viewport& vp, Camera& cam)
+        {
+            glViewport(vp.x, vp.y, vp.w, vp.h);
+
+            glm::mat4 projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
+            glm::mat4 view       = cam.get_view();
+            glm::mat4 MVP        = projection * view;
+
+            std::array<glm::vec4, 6> frustum{};
+            compute_camera_frustum_planes(view, projection, frustum);
+
+            // ORIGIN
+            if (g_draw_origin)
+            {
+                glLineWidth(g_origin_width);
+                origin_program->Bind();
+                origin_program->PushUniform16F32("u_MVP", MVP);
+                origin_program->PushUniform1F32("u_Scale", g_origin_scale);
+                origin_vao->Bind();
+                origin_vao->DrawArray(GL_LINES, 6);
+                glLineWidth(1.0f);
+            }
+
+            // CAMERA_TARGET
+            if (g_draw_camera_target)
+            {
+                glLineWidth(g_target_width);
+                camera_target_program->Bind();
+                camera_target_program->PushUniform16F32("u_MVP", MVP);
+                camera_target_program->PushUniform3F32("u_Translation", cam.target);
+                camera_target_program->PushUniform1F32("u_Scale", g_target_scale);
+                camera_target_program->PushUniform3F32("u_Color", g_target_color);
+                target_vao->Bind();
+                target_vao->DrawArray(GL_LINES, 6);
+                glLineWidth(1.0f);
+            }
+
+            // TRAJECTORY
+            if (g_draw_trajectory && can_draw_trajectory)
+            {
+                auto start = std::chrono::high_resolution_clock::now();
+
+                glLineWidth(g_trajectory_width);
+                trajectory_program->Bind();
+                trajectory_program->PushUniform16F32("u_MVP", MVP);
+                trajectory_program->PushUniform3F32("u_Color", g_trajectory_color);
+                g_trajectory_positions_vao->Bind();
+                g_trajectory_positions_vao->DrawArray(GL_LINE_STRIP, g_trajectory_positions.size());
+                glLineWidth(1.0f);
+
+                auto end = std::chrono::high_resolution_clock::now();
+
+                g_cpu_time_draw_trajectory_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
+            }
+
+            //  STRETCHER
+            if (g_draw_stretcher && can_draw_stretcher)
+            {
+                auto start = std::chrono::high_resolution_clock::now();
+
+                stretcher_program->Bind();
+                stretcher_program->PushUniform16F32("u_MVP", MVP);
+                stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
+
+                g_stretcher_vao->Bind();
+                g_stretcher_vao->DrawElements(GL_TRIANGLES, g_stretcher_indices.size(), 1, 0);
+
+                auto end = std::chrono::high_resolution_clock::now();
+
+                g_cpu_time_draw_stretcher_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
+            }
+
+            //  STRETCHER BBOX
+            if (g_draw_stretcher_bbox && can_draw_stretcher)
+            {
+                glLineWidth(g_stretcher_box_width);
+
+                bounding_box_stretcher_program->Bind();
+                bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
+                bounding_box_stretcher_program->PushUniform3F32("u_Color", g_stretcher_box_color);
+                bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
+                g_stretcher_aabb_vao->Bind();
+                g_stretcher_aabb_vao->DrawArray(GL_LINES, 24);
+                glLineWidth(1.0f);
+            }
+
+            const bool draw_any_cave_lod = g_point_cloud_bucket_draw || g_point_cloud_bucket_in_obb_draw || g_point_cloud_bucket_in_obb_proximity_draw;
+
+            // POINT_CLOUD
+            if (g_draw_point_cloud && can_draw_cave && draw_any_cave_lod)
+            {
+                auto start = std::chrono::high_resolution_clock::now();
+
+                glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
+
+                glPointSize(g_point_cloud_point_size);
+
+                point_cloud_program->Bind();
+                point_cloud_program->PushUniform16F32("u_MVP", MVP);
 
                 for (auto& [ID, bucket] : g_buckets)
                 {
-                    glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
-                    glm::vec3 to_center = center - camera_pos;
-
-                    if (glm::dot(to_center, camera_forward) <= 0.0f)
+                    if (!bucket.draw || !bucket.lods)
                     {
                         continue;
                     }
 
-                    if (g_use_fine_picking)
+                    glm::vec3 center   = 0.5f * (bucket.aabb.min + bucket.aabb.max);
+                    float     distance = glm::length(center - camera_pos);
+
+                    size_t lod_count = 0;
+                    for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
                     {
-                        PointCloudLOD* lod = bucket.lods;
-                        while (lod->next)
-                        {
-                            lod = lod->next;
-                        }
-
-                        // check all points in last LOD
-                        for (const auto& p : lod->points)
-                        {
-                            const glm::vec3& point    = p.position;
-                            glm::vec3        diff     = point - camera_pos;
-                            float            proj_len = glm::dot(diff, ray_dir);
-
-                            if (proj_len >= closest_dist)
-                                continue;
-
-                            glm::vec3 closest_point = camera_pos + ray_dir * proj_len;
-                            float     dist_to_ray   = glm::length(point - closest_point);
-
-                            if (dist_to_ray <= PICK_RADIUS)
-                            {
-                                closest_dist  = proj_len;
-                                picked_record = &bucket;
-                                picked_id     = ID;
-                                break;
-                            }
-                        }
+                        ++lod_count;
                     }
-                    else
+
+                    size_t         lod_index = g_use_fixed_lod ? static_cast<size_t>(g_fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
+                    PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
+
+                    if (!lod || !lod_in_camera_frustum(*lod, frustum))
                     {
-                        // simple bounding-box picking using record extent
-                        glm::vec3 bmin = bucket.aabb.min;
-                        glm::vec3 bmax = bucket.aabb.max;
+                        continue;
+                    }
 
-                        float tmin = 0.0f, tmax = 0.0f;
+                    const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
+                    const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
 
-                        for (int i = 0; i < 3; ++i)
-                        {
-                            if (std::abs(ray_dir[i]) < 1e-6f)
-                            {
-                                if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
-                                {
-                                    tmin = tmax = -1.0f;
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                float invD = 1.0f / ray_dir[i];
-                                float t0   = (bmin[i] - camera_pos[i]) * invD;
-                                float t1   = (bmax[i] - camera_pos[i]) * invD;
-                                if (t0 > t1)
-                                    std::swap(t0, t1);
-                                tmin = (i == 0) ? t0 : std::max(tmin, t0);
-                                tmax = (i == 0) ? t1 : std::min(tmax, t1);
-                            }
-                        }
+                    if (is_in_obb && g_point_cloud_bucket_in_obb_draw)
+                    {
+                        lod->vao->Bind();
+                        lod->vao->DrawArray(GL_POINTS, lod->points.size());
+                        continue;
+                    }
 
-                        if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
-                        {
-                            closest_dist  = tmin;
-                            picked_record = &bucket;
-                            picked_id     = ID;
-                        }
+                    if (is_on_obb_proximity && g_point_cloud_bucket_in_obb_proximity_draw)
+                    {
+                        lod->vao->Bind();
+                        lod->vao->DrawArray(GL_POINTS, lod->points.size());
+                        continue;
+                    }
+
+                    if (g_point_cloud_bucket_draw && !(is_in_obb || is_on_obb_proximity))
+                    {
+                        lod->vao->Bind();
+                        lod->vao->DrawArray(GL_POINTS, lod->points.size());
+                        continue;
                     }
                 }
 
-                if (picked_record)
-                {
-                    spdlog::info("Picking hit : ID = [{} {} {}]", picked_id.x, picked_id.y, picked_id.z);
+                glPointSize(1.0f);
 
-                    glm::vec3 center = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
-                    glm::vec3 offset = camera.position - camera.target;
-                    camera.target    = center;
-                    camera.position  = camera.target + offset;
-                }
-                else
-                {
-                    spdlog::warn("Picking missed ...");
-                }
+                auto end = std::chrono::high_resolution_clock::now();
+
+                g_cpu_time_draw_cave_buckets_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
-        }
 
-        // ORIGIN
-        if (g_draw_origin)
-        {
-            glLineWidth(g_origin_width);
-            origin_program->Bind();
-            origin_program->PushUniform16F32("u_MVP", MVP);
-            origin_program->PushUniform1F32("u_Scale", g_origin_scale);
-            origin_vao->Bind();
-            origin_vao->DrawArray(GL_LINES, 6);
-            glLineWidth(1.0f);
-        }
+            const bool draw_any_cave_boxes = g_point_cloud_bbox_draw || g_point_cloud_bbox_in_obb_draw || g_point_cloud_bbox_in_obb_proximity_draw;
 
-        // CAMERA_TARGET
-        if (g_draw_camera_target)
-        {
-            glLineWidth(g_target_width);
-            camera_target_program->Bind();
-            camera_target_program->PushUniform16F32("u_MVP", MVP);
-            camera_target_program->PushUniform3F32("u_Translation", camera.target);
-            camera_target_program->PushUniform1F32("u_Scale", g_target_scale);
-            camera_target_program->PushUniform3F32("u_Color", g_target_color);
-            target_vao->Bind();
-            target_vao->DrawArray(GL_LINES, 6);
-            glLineWidth(1.0f);
-        }
-
-        // TRAJECTORY
-        if (g_draw_trajectory && can_draw_trajectory)
-        {
-            auto start = std::chrono::high_resolution_clock::now();
-
-            glLineWidth(g_trajectory_width);
-            trajectory_program->Bind();
-            trajectory_program->PushUniform16F32("u_MVP", MVP);
-            trajectory_program->PushUniform3F32("u_Color", g_trajectory_color);
-            g_trajectory_positions_vao->Bind();
-            g_trajectory_positions_vao->DrawArray(GL_LINE_STRIP, g_trajectory_positions.size());
-            glLineWidth(1.0f);
-
-            auto end = std::chrono::high_resolution_clock::now();
-
-            g_cpu_time_draw_trajectory_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
-        }
-
-        //  STRETCHER
-        if (g_draw_stretcher && can_draw_stretcher)
-        {
-            auto start = std::chrono::high_resolution_clock::now();
-
-            stretcher_program->Bind();
-            stretcher_program->PushUniform16F32("u_MVP", MVP);
-            stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
-
-            g_stretcher_vao->Bind();
-            g_stretcher_vao->DrawElements(GL_TRIANGLES, g_stretcher_indices.size(), 1, 0);
-
-            auto end = std::chrono::high_resolution_clock::now();
-
-            g_cpu_time_draw_stretcher_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
-        }
-
-        //  STRETCHER BBOX
-        if (g_draw_stretcher_bbox && can_draw_stretcher)
-        {
-            glLineWidth(g_stretcher_box_width);
-
-            bounding_box_stretcher_program->Bind();
-            bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
-            bounding_box_stretcher_program->PushUniform3F32("u_Color", g_stretcher_box_color);
-            bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
-            g_stretcher_aabb_vao->Bind();
-            g_stretcher_aabb_vao->DrawArray(GL_LINES, 24);
-            glLineWidth(1.0f);
-        }
-
-        const bool draw_any_cave_lod = g_point_cloud_bucket_draw || g_point_cloud_bucket_in_obb_draw || g_point_cloud_bucket_in_obb_proximity_draw;
-
-        // POINT_CLOUD
-        if (g_draw_point_cloud && can_draw_cave && draw_any_cave_lod)
-        {
-            auto start = std::chrono::high_resolution_clock::now();
-
-            glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
-
-            glPointSize(g_point_cloud_point_size);
-
-            point_cloud_program->Bind();
-            point_cloud_program->PushUniform16F32("u_MVP", MVP);
-
-            for (auto& [ID, bucket] : g_buckets)
+            // POINT CLOUD BOXES
+            if (g_draw_bounding_box && can_draw_bounding_boxes && (draw_any_cave_boxes))
             {
-                if (!bucket.draw || !bucket.lods)
+                auto start = std::chrono::high_resolution_clock::now();
+
+                glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
+
+                bounding_box_program->Bind();
+                bounding_box_program->PushUniform16F32("u_MVP", MVP);
+
+                for (auto& [ID, bucket] : g_buckets)
                 {
-                    continue;
+                    if (!record_in_camera_frustum(bucket, frustum))
+                    {
+                        continue;
+                    }
+
+                    const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
+                    const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
+
+                    if (is_in_obb && g_point_cloud_bbox_in_obb_draw)
+                    {
+                        glLineWidth(g_point_cloud_bbox_in_obb_width);
+                        glm::vec3 red(1.0f, 0.0f, 0.0f);
+
+                        bounding_box_program->PushUniform3F32("u_Color", red);
+
+                        bucket.bbox_vao->Bind();
+                        bucket.bbox_vao->DrawArray(GL_LINES, 24);
+
+                        glLineWidth(1.0f);
+
+                        continue;
+                    }
+                    else if (is_on_obb_proximity && g_point_cloud_bbox_in_obb_proximity_draw)
+                    {
+                        glLineWidth(g_point_cloud_bbox_in_obb_proximity_width);
+                        glm::vec3 blue(0.0f, 0.0f, 1.0f);
+
+                        bounding_box_program->PushUniform3F32("u_Color", blue);
+
+                        bucket.bbox_vao->Bind();
+                        bucket.bbox_vao->DrawArray(GL_LINES, 24);
+
+                        glLineWidth(1.0f);
+
+                        continue;
+                    }
+                    else if (g_point_cloud_bbox_draw && !(is_in_obb || is_on_obb_proximity))
+                    {
+                        glLineWidth(g_point_cloud_bbox_width);
+                        glm::vec3 white(1.0f, 1.0f, 1.0f);
+
+                        bounding_box_program->PushUniform3F32("u_Color", white);
+
+                        bucket.bbox_vao->Bind();
+                        bucket.bbox_vao->DrawArray(GL_LINES, 24);
+
+                        glLineWidth(1.0f);
+
+                        continue;
+                    }
                 }
 
-                glm::vec3 center   = 0.5f * (bucket.aabb.min + bucket.aabb.max);
-                float     distance = glm::length(center - camera_pos);
+                auto end = std::chrono::high_resolution_clock::now();
 
-                size_t lod_count = 0;
-                for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
-                {
-                    ++lod_count;
-                }
-
-                size_t         lod_index = g_use_fixed_lod ? static_cast<size_t>(g_fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
-                PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
-
-                if (!lod || !lod_in_camera_frustum(*lod, frustum))
-                {
-                    continue;
-                }
-
-                const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
-                const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
-
-                if (is_in_obb && g_point_cloud_bucket_in_obb_draw)
-                {
-                    lod->vao->Bind();
-                    lod->vao->DrawArray(GL_POINTS, lod->points.size());
-                    continue;
-                }
-
-                if (is_on_obb_proximity && g_point_cloud_bucket_in_obb_proximity_draw)
-                {
-                    lod->vao->Bind();
-                    lod->vao->DrawArray(GL_POINTS, lod->points.size());
-                    continue;
-                }
-
-                if (g_point_cloud_bucket_draw && !(is_in_obb || is_on_obb_proximity))
-                {
-                    lod->vao->Bind();
-                    lod->vao->DrawArray(GL_POINTS, lod->points.size());
-                    continue;
-                }
+                g_cpu_time_draw_cave_buckets_bbox_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
+        };
 
-            glPointSize(1.0f);
+        const int count = static_cast<int>(ctx.active_count);
 
-            auto end = std::chrono::high_resolution_clock::now();
-
-            g_cpu_time_draw_cave_buckets_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
+        if (g_lock_viewport0_target_to_trajectory && g_trajectory_positions.size())
+        {
+            snap_camera_target_to_trajectory(ctx.cameras[0], g_trajectory_positions[g_trajectory_index].position);
         }
 
-        const bool draw_any_cave_boxes = g_point_cloud_bbox_draw || g_point_cloud_bbox_in_obb_draw || g_point_cloud_bbox_in_obb_proximity_draw;
-
-        // POINT CLOUD BOXES
-        if (g_draw_bounding_box && can_draw_bounding_boxes && (draw_any_cave_boxes))
+        for (int i = 0; i < count; ++i)
         {
-            auto start = std::chrono::high_resolution_clock::now();
-
-            glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
-
-            bounding_box_program->Bind();
-            bounding_box_program->PushUniform16F32("u_MVP", MVP);
-
-            for (auto& [ID, bucket] : g_buckets)
+            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
             {
-                if (!record_in_camera_frustum(bucket, frustum))
-                {
-                    continue;
-                }
-
-                const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
-                const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
-
-                if (is_in_obb && g_point_cloud_bbox_in_obb_draw)
-                {
-                    glLineWidth(g_point_cloud_bbox_in_obb_width);
-                    glm::vec3 red(1.0f, 0.0f, 0.0f);
-
-                    bounding_box_program->PushUniform3F32("u_Color", red);
-
-                    bucket.bbox_vao->Bind();
-                    bucket.bbox_vao->DrawArray(GL_LINES, 24);
-
-                    glLineWidth(1.0f);
-
-                    continue;
-                }
-                else if (is_on_obb_proximity && g_point_cloud_bbox_in_obb_proximity_draw)
-                {
-                    glLineWidth(g_point_cloud_bbox_in_obb_proximity_width);
-                    glm::vec3 blue(0.0f, 0.0f, 1.0f);
-
-                    bounding_box_program->PushUniform3F32("u_Color", blue);
-
-                    bucket.bbox_vao->Bind();
-                    bucket.bbox_vao->DrawArray(GL_LINES, 24);
-
-                    glLineWidth(1.0f);
-
-                    continue;
-                }
-                else if (g_point_cloud_bbox_draw && !(is_in_obb || is_on_obb_proximity))
-                {
-                    glLineWidth(g_point_cloud_bbox_width);
-                    glm::vec3 white(1.0f, 1.0f, 1.0f);
-
-                    bounding_box_program->PushUniform3F32("u_Color", white);
-
-                    bucket.bbox_vao->Bind();
-                    bucket.bbox_vao->DrawArray(GL_LINES, 24);
-
-                    glLineWidth(1.0f);
-
-                    continue;
-                }
+                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
             }
+            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
+            {
+                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
+            }
+        }
 
-            auto end = std::chrono::high_resolution_clock::now();
-
-            g_cpu_time_draw_cave_buckets_bbox_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
+        for (int i = 0; i < count; ++i)
+        {
+            draw_scene(ctx.viewport_for(i), ctx.cameras[i]);
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
