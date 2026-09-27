@@ -41,6 +41,10 @@
 
 #include <ImGuizmo.h>
 
+struct ProjectData
+{
+};
+
 static bool _display_project_tab       = true;
 static bool _display_user_settings_tab = true;
 static bool _display_debug_tab         = false;
@@ -84,6 +88,8 @@ static std::string g_environment_path{};
 
 // lock viewport 0 camera target to current trajectory pose
 static bool g_lock_viewport0_target_to_trajectory = false;
+
+static size_t g_max_lod_count = 0;
 
 static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
 {
@@ -360,6 +366,17 @@ static bool rebuild_cave_opengl_data()
         bucket.bbox_vao = new VertexArray(bucket.bbox_vbo, false, nullptr, false, layout_point); //
     }
 
+    for (auto& [ID, bucket] : g_buckets)
+    {
+        size_t bucket_lod_count = 0;
+        for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+        {
+            ++bucket_lod_count;
+        }
+
+        g_max_lod_count = std::max(g_max_lod_count, bucket_lod_count);
+    }
+
     if (g_buckets.empty())
     {
         spdlog::error("Bucketization produced no buckets from {} cave points", g_cave_vertices.size());
@@ -541,18 +558,6 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
-
-        size_t max_lod_count = 0;
-        for (auto& [ID, bucket] : g_buckets)
-        {
-            size_t bucket_lod_count = 0;
-            for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
-            {
-                ++bucket_lod_count;
-            }
-
-            max_lod_count = std::max(max_lod_count, bucket_lod_count);
-        }
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -745,7 +750,7 @@ int main()
                     {
                         ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
 
-                        const int32_t max_lod_index = max_lod_count > 0 ? static_cast<int32_t>(max_lod_count - 1) : 0;
+                        const int32_t max_lod_index = g_max_lod_count > 0 ? static_cast<int32_t>(g_max_lod_count - 1) : 0;
                         ImGui::BeginDisabled(!g_use_fixed_lod);
                         ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
                         ImGui::EndDisabled();
@@ -1036,7 +1041,7 @@ int main()
             }
         }
 
-        auto draw_scene = [&](const Viewport& vp, Camera& cam)
+        auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
         {
             glViewport(vp.x, vp.y, vp.w, vp.h);
 
@@ -1138,7 +1143,9 @@ int main()
                     const glm::vec3 position_extent = glm::max(g_cave_aabb.max - g_cave_aabb.min, glm::vec3(1e-6f));
                     active_point_cloud_program->PushUniform3F32("u_PositionInvRange", 1.0f / position_extent);
                     active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
-                                                                                            user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity ? 1.0f : 0.0f);
+                                                                                               user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity
+                                                                                           ? 1.0f
+                                                                                           : 0.0f);
                 }
 
                 for (auto& [ID, bucket] : g_buckets)
@@ -1282,7 +1289,7 @@ int main()
 
         for (int i = 0; i < count; ++i)
         {
-            draw_scene(ctx.viewport_for(i), ctx.cameras[i]);
+            draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

@@ -290,12 +290,19 @@ vec3 TurboColormap(float x)
     );
 }
 
+float PositionHash(vec3 position)
+{
+    return 0.50 * sin(position.x * 1.00 + position.y * 1.73 + position.z * 2.31)
+         + 0.30 * sin(position.x * 2.41 + position.y * 0.91 + position.z * 1.37)
+         + 0.20 * sin(position.x * 0.63 + position.y * 2.17 + position.z * 0.87);
+}
+
 void main()
 {
     const vec3  position_t  = clamp((in_Position  - u_PositionMin)  * u_PositionInvRange,  0.0f, 1.0f);
     const float intensity_t = clamp((in_Intensity - u_IntensityMin) * u_IntensityInvRange, 0.0f, 1.0f);
  
-    const float t = (u_UsePosition > 0.0f) ? position_t.g : intensity_t;
+    const float t = (u_UsePosition > 0.0f) ? PositionHash(position_t) : intensity_t;
 
     vec3 color = TurboColormap(t);
 
