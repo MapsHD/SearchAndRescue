@@ -195,6 +195,78 @@ void main()
 }
 )";
 
+static constexpr const char* const kPointCloudColorMapVert = R"(
+#version 460 core
+
+layout(location = 0) in vec3 in_Position;
+layout(location = 1) in float in_Intensity;
+
+layout(location = 0) uniform mat4  u_MVP               = mat4(1.0f);
+layout(location = 1) uniform vec3  u_ColorMapLow        = vec3(0.0f);
+layout(location = 2) uniform vec3  u_ColorMapHigh       = vec3(1.0f);
+layout(location = 3) uniform float u_IntensityMin      = float(0.0f);
+layout(location = 4) uniform float u_IntensityInvRange = float(1.0f);
+layout(location = 5) uniform float u_MultiplyIntensity = float(0.0f);
+layout(location = 6) uniform float u_UsePosition       = float(0.0f);
+layout(location = 7) uniform vec3  u_PositionMin        = vec3(0.0f);
+layout(location = 8) uniform vec3  u_PositionInvRange   = vec3(1.0f);
+
+layout(location = 0) out BLOCK
+{
+    vec3 color;
+} shared_data;
+
+void main()
+{
+    const vec3 position_t = clamp((in_Position - u_PositionMin) * u_PositionInvRange, 0.0f, 1.0f);
+
+    vec3 color = mix(u_ColorMapLow, u_ColorMapHigh, position_t.g);
+
+    if (u_UsePosition > 0.0f)
+    {
+        if (u_MultiplyIntensity > 0.0f)
+        {
+            shared_data.color = position_t * in_Intensity;
+        }
+        else
+        {
+            shared_data.color = position_t;
+        }
+    }
+    else
+    {
+        const float intensity_t = clamp((in_Intensity - u_IntensityMin) * u_IntensityInvRange, 0.0f, 1.0f);
+
+        color = mix(u_ColorMapLow, u_ColorMapHigh, intensity_t);
+
+        if (u_MultiplyIntensity > 0.0f)
+        {
+            color *= in_Intensity;
+        }
+
+        shared_data.color = color;
+    }
+
+    gl_Position = u_MVP * vec4(in_Position, 1.0f);
+}
+)";
+
+static constexpr const char* const kPointCloudColorMapFrag = R"(
+#version 460 core
+
+layout(location = 0) out vec3 out_Color;
+
+layout(location = 0) in BLOCK
+{
+    vec3 color;
+} shared_data;
+
+void main()
+{
+    out_Color = shared_data.color;
+}
+)";
+
 static constexpr const char* const kStretcherVert = R"(
 #version 460 core
 
@@ -315,6 +387,15 @@ ProgramShaderSources GetProgramShaderSources_PointCloud()
         .vertex_source_size   = (int32_t)strlen(kPointCloudVert),
         .fragment_source      = kPointCloudFrag,
         .fragment_source_size = (int32_t)strlen(kPointCloudFrag)};
+}
+
+ProgramShaderSources GetProgramShaderSources_PointCloudColorMap()
+{
+    return ProgramShaderSources{
+        .vertex_source        = kPointCloudColorMapVert,
+        .vertex_source_size   = (int32_t)strlen(kPointCloudColorMapVert),
+        .fragment_source      = kPointCloudColorMapFrag,
+        .fragment_source_size = (int32_t)strlen(kPointCloudColorMapFrag)};
 }
 
 ProgramShaderSources GetProgramShaderSources_Stretcher()

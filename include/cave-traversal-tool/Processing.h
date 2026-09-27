@@ -13,8 +13,7 @@ void bucketize_point_cloud(
     const size_t                       D,
     const size_t                       L,
     const size_t                       N,
-    const bool                         use_centered,
-    const bool                         mark_draw);
+    const bool                         use_centered);
 
 OBB aabb_to_obb(const AABB& aabb, const glm::mat4& transform);
 
