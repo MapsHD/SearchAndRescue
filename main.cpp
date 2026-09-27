@@ -1131,8 +1131,6 @@ int main()
 
                 if (use_color_map)
                 {
-                    active_point_cloud_program->PushUniform3F32("u_ColorMapLow", user_settings.point_cloud.color_map_low);
-                    active_point_cloud_program->PushUniform3F32("u_ColorMapHigh", user_settings.point_cloud.color_map_high);
                     active_point_cloud_program->PushUniform1F32("u_IntensityMin", g_intensity_min);
                     active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (g_intensity_max > g_intensity_min) ? 1.0f / (g_intensity_max - g_intensity_min) : 1.0f);
                     active_point_cloud_program->PushUniform1F32("u_UsePosition", use_position_map ? 1.0f : 0.0f);

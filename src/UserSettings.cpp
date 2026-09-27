@@ -200,12 +200,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                 }
             }
 
-            if (user_settings.point_cloud.display_mode != PointCloudDisplayMode::Intensity)
-            {
-                ImGui::ColorEdit3("Color map low", glm::value_ptr(user_settings.point_cloud.color_map_low));
-                ImGui::ColorEdit3("Color map high", glm::value_ptr(user_settings.point_cloud.color_map_high));
-            }
-
             ImGui::DragFloat("BBOX width", &user_settings.point_cloud.bbox_width, 0.25f, 1.0f, 8.0f);
             ImGui::DragFloat("BBOX width in OBB", &user_settings.point_cloud.bbox_width_in_obb, 0.25f, 1.0f, 8.0f);
             ImGui::DragFloat("BBOX width in OBB proximity", &user_settings.point_cloud.bbox_width_in_obb_proximity, 0.25f, 1.0f, 8.0f);
@@ -250,7 +244,7 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
         {"target", {{"draw_enable", user_settings.target.draw_enable}, {"scale", user_settings.target.scale}, {"width", user_settings.target.width}, {"color", Vec3ToJSON(user_settings.target.color)}}},
         {"trajectory", {{"draw_enable", user_settings.trajectory.draw_enable}, {"width", user_settings.trajectory.width}, {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
         {"stretcher", {{"draw_enable", user_settings.stretcher.draw_enable}, {"draw_enable_bbox", user_settings.stretcher.draw_enable_bbox}, {"bbox_width", user_settings.stretcher.bbox_width}, {"bbox_color", Vec3ToJSON(user_settings.stretcher.bbox_color)}}},
-        {"point_cloud", {{"point_size", user_settings.point_cloud.point_size}, {"bbox_width", user_settings.point_cloud.bbox_width}, {"bbox_width_in_obb", user_settings.point_cloud.bbox_width_in_obb}, {"bbox_width_in_obb_proximity", user_settings.point_cloud.bbox_width_in_obb_proximity}, {"draw_enable_bbox", user_settings.point_cloud.draw_enable_bbox}, {"draw_enable_bbox_out", user_settings.point_cloud.draw_enable_bbox_out}, {"draw_enable_bbox_in_obb", user_settings.point_cloud.draw_enable_bbox_in_obb}, {"draw_enable_bbox_in_obb_proximity", user_settings.point_cloud.draw_enable_bbox_in_obb_proximity}, {"draw_enable_pc", user_settings.point_cloud.draw_enable_pc}, {"draw_enable_pc_out", user_settings.point_cloud.draw_enable_pc_out}, {"draw_enable_pc_in_obb", user_settings.point_cloud.draw_enable_pc_in_obb}, {"draw_enable_pc_in_obb_proximity", user_settings.point_cloud.draw_enable_pc_in_obb_proximity}, {"display_mode", static_cast<int32_t>(user_settings.point_cloud.display_mode)}, {"color_map_low", Vec3ToJSON(user_settings.point_cloud.color_map_low)}, {"color_map_high", Vec3ToJSON(user_settings.point_cloud.color_map_high)}}},
+        {"point_cloud", {{"point_size", user_settings.point_cloud.point_size}, {"bbox_width", user_settings.point_cloud.bbox_width}, {"bbox_width_in_obb", user_settings.point_cloud.bbox_width_in_obb}, {"bbox_width_in_obb_proximity", user_settings.point_cloud.bbox_width_in_obb_proximity}, {"draw_enable_bbox", user_settings.point_cloud.draw_enable_bbox}, {"draw_enable_bbox_out", user_settings.point_cloud.draw_enable_bbox_out}, {"draw_enable_bbox_in_obb", user_settings.point_cloud.draw_enable_bbox_in_obb}, {"draw_enable_bbox_in_obb_proximity", user_settings.point_cloud.draw_enable_bbox_in_obb_proximity}, {"draw_enable_pc", user_settings.point_cloud.draw_enable_pc}, {"draw_enable_pc_out", user_settings.point_cloud.draw_enable_pc_out}, {"draw_enable_pc_in_obb", user_settings.point_cloud.draw_enable_pc_in_obb}, {"draw_enable_pc_in_obb_proximity", user_settings.point_cloud.draw_enable_pc_in_obb_proximity}, {"display_mode", static_cast<int32_t>(user_settings.point_cloud.display_mode)}}},
         {"collision", {{"radious", user_settings.collision.radious}}}};
 
     std::ofstream file(path);
@@ -320,8 +314,6 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     Vec3FromJSON(target, "color", loaded.target.color);
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
-    Vec3FromJSON(point_cloud, "color_map_low", loaded.point_cloud.color_map_low);
-    Vec3FromJSON(point_cloud, "color_map_high", loaded.point_cloud.color_map_high);
 
     if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
         return false;

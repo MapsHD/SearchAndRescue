@@ -83,10 +83,6 @@ struct UserSettings
 
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
-
-        // used only when display mode is ColorMap or ColorMapTimesIntensity
-        glm::vec3 color_map_low  = {0.0f, 0.0f, 1.0f};
-        glm::vec3 color_map_high = {1.0f, 0.0f, 0.0f};
     } point_cloud;
 
     struct
