@@ -16,5 +16,6 @@ ProgramShaderSources GetProgramShaderSources_BoundingBox();
 ProgramShaderSources GetProgramShaderSources_CameraTarger();
 ProgramShaderSources GetProgramShaderSources_Origin();
 ProgramShaderSources GetProgramShaderSources_PointCloud();
+ProgramShaderSources GetProgramShaderSources_PointCloudColorMap();
 ProgramShaderSources GetProgramShaderSources_Stretcher();
 ProgramShaderSources GetProgramShaderSources_Trajectory();

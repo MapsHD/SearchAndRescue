@@ -13,8 +13,12 @@
 #include <GLFW/glfw3.h>
 // clang-format on
 
+#include <cave-traversal-tool/UserSettings.h>
+
+#include <cave-traversal-tool/Debug.h>
 #include <cave-traversal-tool/ErrorCallbacks.h>
 #include <cave-traversal-tool/FileIO.h>
+#include <cave-traversal-tool/PFDWrapper.h>
 
 #include <cave-traversal-tool/Camera.h>
 #include <cave-traversal-tool/Structures.h>
@@ -37,17 +41,11 @@
 
 #include <ImGuizmo.h>
 
-#include <portable-file-dialogs.h>
+static bool _display_project_tab       = true;
+static bool _display_user_settings_tab = true;
+static bool _display_debug_tab         = false;
 
-#define CHECK_BOOL(expression)                                    \
-    do                                                            \
-    {                                                             \
-        if (!expression)                                          \
-        {                                                         \
-            spdlog::error("Expression failed : {}", #expression); \
-            std::abort();                                         \
-        }                                                         \
-    } while (0)
+static UserSettings user_settings = {};
 
 static std::vector<PointIntensity> g_cave_vertices{};
 static PointCloudBucket            g_buckets{};
@@ -62,61 +60,7 @@ static std::vector<uint32_t>   g_stretcher_indices{};
 static std::vector<Point>                          g_trajectory_positions{};
 static std::vector<TrajectoryPoseOrientationMat33> g_trajectory_orientations_mat33{};
 
-static float g_cpu_time_draw_trajectory_ms        = 0.0f;
-static float g_cpu_time_draw_stretcher_ms         = 0.0f;
-static float g_cpu_time_draw_cave_buckets_ms      = 0.0f;
-static float g_cpu_time_draw_cave_buckets_bbox_ms = 0.0f;
-
-static float   g_cave_load_extent                     = 1.0f;
-static int32_t g_cave_load_decimation_factor          = 2;
-static int32_t g_cave_load_decimation_levels          = 8;
-static int32_t g_cave_load_minimum_first_level_points = 250;
-static bool    g_cave_load_use_centered_extents       = true;
-static bool    g_cave_load_set_draw                   = true;
-static int32_t g_load_csv_every_nth                   = 1;
-
-static bool g_use_fine_picking = false;
-
-static float g_cave_proximity_search = 3.0f;
-
-static bool g_draw_origin         = true;
-static bool g_draw_camera_target  = true;
-static bool g_draw_trajectory     = true;
-static bool g_draw_stretcher      = true;
-static bool g_draw_stretcher_bbox = true;
-static bool g_draw_point_cloud    = true;
-static bool g_draw_bounding_box   = true;
-
-static glm::vec3 g_clear_color = {0.2f, 0.2f, 0.2f};
-
-static float g_origin_scale = 1.0f;
-static float g_origin_width = 1.0f;
-
-static float     g_target_scale = 1.0f;
-static float     g_target_width = 1.0f;
-static glm::vec3 g_target_color = {1.0f, 1.0f, 1.0f};
-
-static float     g_trajectory_width = 1.0f;
-static glm::vec3 g_trajectory_color = {1.0f, 1.0f, 1.0f};
-
-static glm::vec3 g_stretcher_box_color = {0.0f, 1.0f, 1.0f};
-static float     g_stretcher_box_width = 1.0f;
-
-static float g_point_cloud_point_size = 1.5f;
-
-static float g_point_cloud_bbox_width                  = 1.0f;
-static float g_point_cloud_bbox_in_obb_width           = 4.0f;
-static float g_point_cloud_bbox_in_obb_proximity_width = 3.0f;
-
-static bool g_point_cloud_bbox_draw                  = false;
-static bool g_point_cloud_bbox_in_obb_draw           = true;
-static bool g_point_cloud_bbox_in_obb_proximity_draw = true;
-
-static bool g_point_cloud_bucket_draw                  = false;
-static bool g_point_cloud_bucket_in_obb_draw           = true;
-static bool g_point_cloud_bucket_in_obb_proximity_draw = true;
-
-static bool    g_use_fixed_lod   = false;
+static bool    g_use_fixed_lod   = true;
 static int32_t g_fixed_lod_index = 0;
 
 static Buffer*      g_stretcher_vbo          = nullptr;
@@ -134,6 +78,10 @@ static uint32_t g_trajectory_index                     = 0;
 // gizmo
 static bool g_modify_current_pose_with_gizmo = false;
 
+static std::string g_trajectory_path{};
+static std::string g_object_path{};
+static std::string g_environment_path{};
+
 // lock viewport 0 camera target to current trajectory pose
 static bool g_lock_viewport0_target_to_trajectory = false;
 
@@ -144,39 +92,21 @@ static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3
     cam.position           = pose_pos + offset;
 }
 
-static inline bool open_single_file_with_pfd(const std::string& title, const std::string& filter_description, const std::string& filter, std::string& out)
-{
-    const std::vector<std::string> result = pfd::open_file(
-                                                title,
-                                                "",
-                                                {filter_description, filter})
-                                                .result();
-
-    if (result.empty())
-    {
-        spdlog::error("PFD result emplty - doing nothing ...");
-        return false;
-    }
-
-    if (result.size() > 1)
-    {
-        spdlog::warn("PFD result contains multiple entiries - loading first ...");
-    }
-
-    out = result.front();
-
-    return true;
-}
-
 template <typename T>
 static size_t std_vector_size(const std::vector<T>& vector)
 {
     return vector.size() * sizeof(T);
 }
 
-static void rebuild_trajectory_mat33_opengl_data()
+static bool rebuild_trajectory_mat33_opengl_data()
 {
     const std::vector<VertexBufferAttributeLayout> layout_point = opengl_vertex_array_get_vertex_layout<Point>();
+
+    if (g_trajectory_positions.empty() || g_trajectory_orientations_mat33.empty())
+    {
+        spdlog::error("Refusing to rebuild trajectory OpenGL data : no trajectory points loaded");
+        return false;
+    }
 
     g_trajectory_index = 0;
 
@@ -196,12 +126,20 @@ static void rebuild_trajectory_mat33_opengl_data()
     g_trajectory_positions_vao = new VertexArray(g_trajectory_positions_vbo, false, nullptr, false, layout_point);
 
     spdlog::debug("Created VAO [{}] and VBO [{}]", g_trajectory_positions_vao->GetID(), g_trajectory_positions_vbo->GetID());
+
+    return true;
 }
 
-static void rebuild_stretcher_opengl_data()
+static bool rebuild_stretcher_opengl_data()
 {
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
+
+    if (g_stretcher_vertices.empty() || g_stretcher_indices.empty())
+    {
+        spdlog::error("Refusing to rebuild stretcher OpenGL data : no stretcher data loaded");
+        return false;
+    }
 
     if (g_stretcher_aabb_vao)
     {
@@ -281,12 +219,25 @@ static void rebuild_stretcher_opengl_data()
     g_stretcher_vao = new VertexArray(g_stretcher_vbo, false, g_stretcher_index_buffer, false, layout_color_point);
 
     spdlog::debug("Created VAO [{}], VBO [{}] and IBO [{}]", g_stretcher_vao->GetID(), g_stretcher_vbo->GetID(), g_stretcher_index_buffer->GetID());
+
+    return true;
 }
 
-static void rebuild_cave_opengl_data()
+static float g_intensity_min = 0.0f;
+static float g_intensity_max = 1.0f;
+
+static AABB g_cave_aabb{};
+
+static bool rebuild_cave_opengl_data()
 {
     const std::vector<VertexBufferAttributeLayout> layout_point_intensity = opengl_vertex_array_get_vertex_layout<PointIntensity>();
     const std::vector<VertexBufferAttributeLayout> layout_point           = opengl_vertex_array_get_vertex_layout<Point>();
+
+    if (g_cave_vertices.empty())
+    {
+        spdlog::error("Refusing to rebuild cave OpenGL data : no cave points loaded");
+        return false;
+    }
 
     // Clear old data
     for (auto& [ID, bucket] : g_buckets)
@@ -334,7 +285,27 @@ static void rebuild_cave_opengl_data()
 
     g_buckets.clear();
 
-    bucketize_point_cloud(g_cave_vertices, g_buckets, g_cave_load_extent, g_cave_load_decimation_factor, g_cave_load_decimation_levels, g_cave_load_minimum_first_level_points, g_cave_load_use_centered_extents, g_cave_load_use_centered_extents);
+    g_intensity_min = g_cave_vertices.front().intensity;
+    g_intensity_max = g_intensity_min;
+
+    g_cave_aabb.min = g_cave_vertices.front().position;
+    g_cave_aabb.max = g_cave_aabb.min;
+
+    for (const auto& p : g_cave_vertices)
+    {
+        g_intensity_min = std::min(g_intensity_min, p.intensity);
+        g_intensity_max = std::max(g_intensity_max, p.intensity);
+
+        g_cave_aabb.min = glm::min(g_cave_aabb.min, p.position);
+        g_cave_aabb.max = glm::max(g_cave_aabb.max, p.position);
+    }
+
+    bucketize_point_cloud(g_cave_vertices, g_buckets,
+                          user_settings.io.map_load_extent,
+                          user_settings.io.map_load_decimation_factor,
+                          user_settings.io.map_load_decimation_levels,
+                          user_settings.io.map_load_minimum_first_level_points,
+                          user_settings.io.map_load_use_center_extent);
 
     for (auto& [ID, bucket] : g_buckets)
     {
@@ -388,16 +359,35 @@ static void rebuild_cave_opengl_data()
         bucket.bbox_vbo = new Buffer(GL_NONE, std_vector_size(box_vertices), box_vertices.data());
         bucket.bbox_vao = new VertexArray(bucket.bbox_vbo, false, nullptr, false, layout_point); //
     }
+
+    if (g_buckets.empty())
+    {
+        spdlog::error("Bucketization produced no buckets from {} cave points", g_cave_vertices.size());
+        return false;
+    }
+
+    return true;
 }
 
 static inline void load_trajectory()
 {
     std::string filename;
 
-    if (open_single_file_with_pfd("Open CSV file", "CSV Files (.csv)", "*.csv", filename))
+    if (PFDOpenFile("Open CSV file", "CSV Files (.csv)", "*.csv", filename))
     {
-        CHECK_BOOL(load_trajectory_csv(filename, g_trajectory_positions, g_trajectory_orientations_mat33, g_load_csv_every_nth));
-        rebuild_trajectory_mat33_opengl_data();
+        if (!load_trajectory_csv(filename, g_trajectory_positions, g_trajectory_orientations_mat33, user_settings.io.trajectory_load_every_nth))
+        {
+            spdlog::error("Failed to load trajectory CSV : {}", filename);
+            return;
+        }
+
+        if (!rebuild_trajectory_mat33_opengl_data())
+        {
+            spdlog::error("Failed to rebuild trajectory OpenGL data for : {}", filename);
+            return;
+        }
+
+        g_trajectory_path = filename;
     }
 }
 
@@ -405,10 +395,21 @@ static inline void load_object()
 {
     std::string filename;
 
-    if (open_single_file_with_pfd("Open PLY file", "PLY Files (.ply)", "*.ply", filename))
+    if (PFDOpenFile("Open PLY file", "PLY Files (.ply)", "*.ply", filename))
     {
-        CHECK_BOOL(load_stretcher_ply(filename, g_stretcher_vertices, g_stretcher_indices));
-        rebuild_stretcher_opengl_data();
+        if (!load_stretcher_ply(filename, g_stretcher_vertices, g_stretcher_indices))
+        {
+            spdlog::error("Failed to load stretcher PLY : {}", filename);
+            return;
+        }
+
+        if (!rebuild_stretcher_opengl_data())
+        {
+            spdlog::error("Failed to rebuild stretcher OpenGL data for : {}", filename);
+            return;
+        }
+
+        g_object_path = filename;
     }
 }
 
@@ -416,10 +417,21 @@ static inline void load_environment()
 {
     std::string filename;
 
-    if (open_single_file_with_pfd("Open LAZ file", "LAZ Files (*.laz *.las)", "*.laz *.las", filename))
+    if (PFDOpenFile("Open LAZ file", "LAZ Files (*.laz *.las)", "*.laz *.las", filename))
     {
-        CHECK_BOOL(load_cave_laz(filename, g_cave_vertices));
-        rebuild_cave_opengl_data();
+        if (!load_cave_laz(filename, g_cave_vertices))
+        {
+            spdlog::error("Failed to load environment LAZ : {}", filename);
+            return;
+        }
+
+        if (!rebuild_cave_opengl_data())
+        {
+            spdlog::error("Failed to rebuild cave OpenGL data for : {}", filename);
+            return;
+        }
+
+        g_environment_path = filename;
     }
 }
 
@@ -501,6 +513,7 @@ int main()
     Program* origin_program                 = make_program(GetProgramShaderSources_Origin());
     Program* camera_target_program          = make_program(GetProgramShaderSources_CameraTarger());
     Program* point_cloud_program            = make_program(GetProgramShaderSources_PointCloud());
+    Program* point_cloud_color_map_program  = make_program(GetProgramShaderSources_PointCloudColorMap());
     Program* trajectory_program             = make_program(GetProgramShaderSources_Trajectory());
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
@@ -518,12 +531,28 @@ int main()
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init();
 
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+
+        size_t max_lod_count = 0;
+        for (auto& [ID, bucket] : g_buckets)
+        {
+            size_t bucket_lod_count = 0;
+            for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+            {
+                ++bucket_lod_count;
+            }
+
+            max_lod_count = std::max(max_lod_count, bucket_lod_count);
+        }
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -540,40 +569,239 @@ int main()
 
         glViewport(0, 0, width, height);
 
-        glClearColor(g_clear_color.x, g_clear_color.y, g_clear_color.z, 1.0f);
+        glClearColor(user_settings.opengl.clear_color.x, user_settings.opengl.clear_color.y, user_settings.opengl.clear_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        float line_width_range[2] = {1.0f, 1.0f};
-        glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, line_width_range);
-
-        float point_size_range[2] = {1.0f, 1.0f};
-        glGetFloatv(GL_POINT_SIZE_RANGE, point_size_range);
-
-        const float line_width_min = line_width_range[0];
-        const float line_width_max = line_width_range[1];
-
-        const float point_size_min = point_size_range[0];
-        const float point_size_max = point_size_range[1];
-
-        const bool can_draw_trajectory     = g_trajectory_positions.size() && g_trajectory_orientations_mat33.size();
-        const bool can_draw_stretcher      = g_stretcher_vertices.size() && g_stretcher_indices.size();
-        const bool can_draw_cave           = g_buckets.size();
-        const bool can_draw_bounding_boxes = g_buckets.size();
-
-        size_t max_lod_count = 0;
-        for (auto& [ID, bucket] : g_buckets)
         {
-            size_t bucket_lod_count = 0;
-            for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+            static ImGuiDockNodeFlags dockspace_flags =
+                ImGuiDockNodeFlags_PassthruCentralNode;
+
+            static ImGuiWindowFlags window_flags =
+                ImGuiWindowFlags_MenuBar |
+                ImGuiWindowFlags_NoDocking |
+                ImGuiWindowFlags_NoTitleBar |
+                ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoResize |
+                ImGuiWindowFlags_NoMove |
+                ImGuiWindowFlags_NoBringToFrontOnFocus |
+                ImGuiWindowFlags_NoNavFocus |
+                ImGuiWindowFlags_NoBackground;
+
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+            ImGui::SetNextWindowPos(viewport->WorkPos);
+            ImGui::SetNextWindowSize(viewport->WorkSize);
+            ImGui::SetNextWindowViewport(viewport->ID);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+            ImGui::Begin("DockSpace Window", nullptr, window_flags);
+
+            ImGui::PopStyleVar(3);
+
+            ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+
+            if (ImGui::BeginMenuBar())
             {
-                ++bucket_lod_count;
+                if (ImGui::BeginMenu("Display tabs"))
+                {
+                    ImGui::MenuItem("Display project tab", nullptr, &_display_project_tab);
+                    ImGui::MenuItem("Display user setting tab", nullptr, &_display_user_settings_tab);
+                    ImGui::MenuItem("Display debug tab", nullptr, &_display_debug_tab);
+
+                    ImGui::EndMenu();
+                }
+
+                ImGui::EndMenuBar();
+            }
+            ImGui::End();
+        }
+
+        {
+            if (_display_project_tab)
+            {
+                if (ImGui::Begin("Application", &_display_project_tab))
+                {
+                    if (ImGui::TreeNode("Viewport"))
+                    {
+                        int count = static_cast<int>(ctx.active_count);
+                        if (ImGui::RadioButton("1 (single)", &count, 1))
+                        {
+                            ctx.active_count = ViewportCount::ONE;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::RadioButton("2 (L/R split)", &count, 2))
+                        {
+                            ctx.active_count = ViewportCount::TWO;
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::RadioButton("4 (2x2 grid)", &count, 4))
+                        {
+                            ctx.active_count = ViewportCount::FOUR;
+                        }
+
+                        static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
+
+                        for (int i = 1; i <= 3; ++i)
+                        {
+                            if (i >= static_cast<int>(ctx.active_count))
+                            {
+                                continue;
+                            }
+
+                            ImGui::Separator();
+                            ImGui::Text("Viewport %d", i + 1);
+
+                            int mode = static_cast<int>(ctx.camera_modes[i]);
+                            if (ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
+                            {
+                                CameraMode old_mode = ctx.camera_modes[i];
+                                ctx.camera_modes[i] = static_cast<CameraMode>(mode);
+                                if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
+                                {
+                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                                }
+                                else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
+                                {
+                                    ctx.cameras[i].near_plane = 0.1f;
+                                    ctx.cameras[i].far_plane  = 1000.0f;
+                                    unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
+                                }
+                            }
+                            ImGui::SameLine();
+                            ImGui::Text("camera");
+
+                            if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+                            {
+                                float old_dist = ctx.view_axis_distance[i];
+                                if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                                {
+                                    float delta               = ctx.view_axis_distance[i] - old_dist;
+                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
+                                    ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                                }
+
+                                ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
+                                ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+
+                                if (ctx.cameras[i].near_plane < 0.01f)
+                                {
+                                    ctx.cameras[i].near_plane = 0.01f;
+                                }
+                                if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
+                                {
+                                    ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
+                                }
+
+                                if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
+                                {
+                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
+                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
+                                }
+                            }
+                        }
+
+                        ImGui::TreePop();
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::TreeNode("File input / output"))
+                    {
+                        if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
+                        {
+                            load_trajectory();
+                        }
+                        ImGui::Text("%s", g_trajectory_path.empty() ? "(none)" : g_trajectory_path.c_str());
+
+                        ImGui::Separator();
+
+                        if (ImGui::Button("Load object", ImVec2(200.0f, 0.0f)))
+                        {
+                            load_object();
+                        }
+                        ImGui::Text("%s", g_object_path.empty() ? "(none)" : g_object_path.c_str());
+
+                        ImGui::Separator();
+
+                        if (ImGui::Button("Load environment", ImVec2(200.0f, 0.0f)))
+                        {
+                            load_environment();
+                        }
+                        ImGui::Text("%s", g_environment_path.empty() ? "(none)" : g_environment_path.c_str());
+
+                        ImGui::TreePop();
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::TreeNode("Level of Detail (LOD)"))
+                    {
+                        ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
+
+                        const int32_t max_lod_index = max_lod_count > 0 ? static_cast<int32_t>(max_lod_count - 1) : 0;
+                        ImGui::BeginDisabled(!g_use_fixed_lod);
+                        ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
+                        ImGui::EndDisabled();
+                        ImGui::TreePop();
+                    }
+
+                    ImGui::Separator();
+                    if (ImGui::TreeNode("Trrajectory"))
+                    {
+                        if (g_trajectory_orientations_mat33.size())
+                        {
+                            const uint32_t zero                  = 0U;
+                            const uint32_t max_orientation_index = static_cast<uint32_t>(g_trajectory_orientations_mat33.size()) - 1U;
+
+                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), max_orientation_index, static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
+                            ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
+                            ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
+                            ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
+                        }
+                        else
+                        {
+                            ImGui::TextColored({1.0f, 0.0f, 0.0f, 1.0f}, "Can not set index of trajectory pose - load trajectory!");
+                        }
+
+                        ImGui::TreePop();
+                    }
+
+                    ImGui::Checkbox("g_modify_current_pose_with_gizmo", &g_modify_current_pose_with_gizmo);
+
+                    ImGui::Separator();
+                    ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
+                    ImGui::SameLine();
+                    if (ImGui::Button("Snap"))
+                    {
+                        if (g_trajectory_positions.size())
+                        {
+                            snap_camera_target_to_trajectory(ctx.cameras[0], g_trajectory_positions[g_trajectory_index].position);
+                        }
+                    }
+                    if (g_lock_viewport0_target_to_trajectory)
+                    {
+                        ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
+                    }
+                }
+                ImGui::End();
             }
 
-            max_lod_count = std::max(max_lod_count, bucket_lod_count);
+            if (_display_user_settings_tab)
+            {
+                UserSettingsImGUI(user_settings, _display_user_settings_tab);
+            }
+
+            if (_display_debug_tab)
+            {
+                DebugImGUI(g_buckets, _display_debug_tab);
+            }
         }
 
         glm::vec3 stretcher_position    = glm::vec3(0.0f);
@@ -606,381 +834,7 @@ int main()
         glm::mat4 stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
 
         const OBB  stretcher_obb               = aabb_to_obb(g_stretcher_aabb, stretcher_pose);
-        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(g_buckets, stretcher_obb, g_cave_proximity_search);
-
-        if (ImGui::Begin("application"))
-        {
-            ImGui::Separator();
-            if (ImGui::TreeNode("Performance"))
-            {
-                ImGui::Text("Framerate  : %.3f FPS", ImGui::GetIO().Framerate);
-                ImGui::Text("Frame time : %.3f ms", ImGui::GetIO().DeltaTime * 1000.0f);
-                ImGui::Text("g_cpu_time_draw_trajectory_ms        : %.3f ms", g_cpu_time_draw_trajectory_ms);
-                ImGui::Text("g_cpu_time_draw_stretcher_ms         : %.3f ms", g_cpu_time_draw_stretcher_ms);
-                ImGui::Text("g_cpu_time_draw_cave_buckets_ms      : %.3f ms", g_cpu_time_draw_cave_buckets_ms);
-                ImGui::Text("g_cpu_time_draw_cave_buckets_bbox_ms : %.3f ms", g_cpu_time_draw_cave_buckets_bbox_ms);
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Viewport"))
-            {
-                int count = static_cast<int>(ctx.active_count);
-                if (ImGui::RadioButton("1 (single)", &count, 1))
-                {
-                    ctx.active_count = ViewportCount::ONE;
-                }
-                ImGui::SameLine();
-                if (ImGui::RadioButton("2 (L/R split)", &count, 2))
-                {
-                    ctx.active_count = ViewportCount::TWO;
-                }
-                ImGui::SameLine();
-                if (ImGui::RadioButton("4 (2x2 grid)", &count, 4))
-                {
-                    ctx.active_count = ViewportCount::FOUR;
-                }
-
-                static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
-
-                for (int i = 1; i <= 3; ++i)
-                {
-                    if (i >= static_cast<int>(ctx.active_count))
-                    {
-                        continue;
-                    }
-
-                    ImGui::Separator();
-                    ImGui::Text("Viewport %d", i + 1);
-
-                    int mode = static_cast<int>(ctx.camera_modes[i]);
-                    if (ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
-                    {
-                        CameraMode old_mode = ctx.camera_modes[i];
-                        ctx.camera_modes[i] = static_cast<CameraMode>(mode);
-                        if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
-                        }
-                        else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
-                        {
-                            ctx.cameras[i].near_plane = 0.1f;
-                            ctx.cameras[i].far_plane  = 1000.0f;
-                            unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
-                        }
-                    }
-                    ImGui::SameLine();
-                    ImGui::Text("camera");
-
-                    if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
-                    {
-                        float old_dist = ctx.view_axis_distance[i];
-                        if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
-                        {
-                            float delta               = ctx.view_axis_distance[i] - old_dist;
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
-                            ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
-                        }
-
-                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                        if (ctx.cameras[i].near_plane < 0.01f)
-                        {
-                            ctx.cameras[i].near_plane = 0.01f;
-                        }
-                        if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                        {
-                            ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                        }
-
-                        if (ImGui::Button(("Reset planes (+-1.5m)##" + std::to_string(i)).c_str()))
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
-                        }
-                    }
-                }
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("File input / output"))
-            {
-                if (ImGui::BeginTable("IOGrid", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchSame))
-                {
-                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-                    ImGui::TableSetupColumn("Read", ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableHeadersRow();
-
-                    // Trajectory
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("Trajectory");
-
-                    ImGui::TableSetColumnIndex(1);
-                    if (ImGui::Button("##traj_read", ImVec2(-FLT_MIN, 0)))
-                    {
-                        load_trajectory();
-                    }
-
-                    // Object
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("Object");
-
-                    ImGui::TableSetColumnIndex(1);
-                    if (ImGui::Button("##obj_read", ImVec2(-FLT_MIN, 0)))
-                    {
-                        load_object();
-                    }
-
-                    // Environment
-                    ImGui::TableNextRow();
-
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::Text("Environment");
-
-                    ImGui::TableSetColumnIndex(1);
-                    if (ImGui::Button("##env_read", ImVec2(-FLT_MIN, 0)))
-                    {
-                        load_environment();
-                    }
-
-                    ImGui::EndTable();
-                }
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("File input / output options"))
-            {
-                ImGui::DragFloat("g_cave_load_extent", &g_cave_load_extent, 0.01f, 0.1f, FLT_MAX, "%.3f");
-                ImGui::DragInt("g_cave_load_decimation_factor", &g_cave_load_decimation_factor, 1.0f, 1, INT32_MAX);
-                ImGui::DragInt("g_cave_load_decimation_levels", &g_cave_load_decimation_levels, 1.0f, 1, INT32_MAX);
-                ImGui::DragInt("g_cave_load_minimum_first_level_points", &g_cave_load_minimum_first_level_points, 1.0f, 1, INT32_MAX);
-                ImGui::Checkbox("g_cave_load_use_centered_extents", &g_cave_load_use_centered_extents);
-                ImGui::Checkbox("g_cave_load_set_draw", &g_cave_load_set_draw);
-                ImGui::DragInt("g_load_csv_every_nth", &g_load_csv_every_nth, 1.0f, 1, INT32_MAX);
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Picking options"))
-            {
-                ImGui::Checkbox("g_use_fine_picking", &g_use_fine_picking);
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Level of Detail (LOD)"))
-            {
-                ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
-
-                const int32_t max_lod_index = max_lod_count > 0 ? static_cast<int32_t>(max_lod_count - 1) : 0;
-                ImGui::BeginDisabled(!g_use_fixed_lod);
-                ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
-                ImGui::EndDisabled();
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Proximity search"))
-            {
-                ImGui::DragFloat("g_cave_proximity_search", &g_cave_proximity_search, 0.1f, 0.0f, FLT_MAX);
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Can draw data?"))
-            {
-                const ImVec4 green(0.2f, 1.0f, 0.2f, 1.0f);
-                const ImVec4 orange(1.0f, 0.6f, 0.0f, 1.0f);
-
-                ImGui::Text("can_draw_trajectory : ");
-                ImGui::SameLine();
-                ImGui::TextColored(can_draw_trajectory ? green : orange, "%c", can_draw_trajectory ? 'Y' : 'N');
-
-                ImGui::Text("can_draw_stretcher : ");
-                ImGui::SameLine();
-                ImGui::TextColored(can_draw_stretcher ? green : orange, "%c", can_draw_stretcher ? 'Y' : 'N');
-
-                ImGui::Text("can_draw_cave : ");
-                ImGui::SameLine();
-                ImGui::TextColored(can_draw_cave ? green : orange, "%c", can_draw_cave ? 'Y' : 'N');
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Draw enable options"))
-            {
-                ImGui::Checkbox("g_draw_origin", &g_draw_origin);
-                ImGui::Checkbox("g_draw_camera_target", &g_draw_camera_target);
-                ImGui::Checkbox("g_draw_trajectory", &g_draw_trajectory);
-                ImGui::Checkbox("g_draw_stretcher", &g_draw_stretcher);
-                ImGui::Checkbox("g_draw_stretcher_bbox", &g_draw_stretcher_bbox);
-                ImGui::Checkbox("g_draw_point_cloud", &g_draw_point_cloud);
-                ImGui::Checkbox("g_draw_bounding_box", &g_draw_bounding_box);
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("OpenGL"))
-            {
-                ImGui::Text("OpenGL version      : %s", (const char*)glGetString(GL_VERSION));
-                ImGui::Text("OpenGL vendor       : %s", (const char*)glGetString(GL_VENDOR));
-                ImGui::Text("OpenGL renderer     : %s", (const char*)glGetString(GL_RENDERER));
-                ImGui::Text("OpenGL GLSL version : %s", (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION));
-
-                ImGui::ColorEdit3("g_clear_color", glm::value_ptr(g_clear_color));
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Display"))
-            {
-                ImGui::DragFloat("g_origin_scale", &g_origin_scale, 0.1f, 1.0f, FLT_MAX);
-                ImGui::DragFloat("g_origin_width", &g_origin_width, 1.0f, line_width_min, line_width_max);
-
-                ImGui::Separator();
-                ImGui::DragFloat("g_target_scale", &g_target_scale, 0.1f, 1.0f, FLT_MAX);
-                ImGui::DragFloat("g_target_width", &g_target_width, 1.0f, line_width_min, line_width_max);
-                ImGui::ColorEdit3("g_target_color", glm::value_ptr(g_target_color));
-
-                ImGui::Separator();
-                ImGui::DragFloat("g_trajectory_width", &g_trajectory_width, 1.0f, line_width_min, line_width_max);
-                ImGui::ColorEdit3("g_trajectory_color", glm::value_ptr(g_trajectory_color));
-
-                ImGui::Separator();
-                ImGui::ColorEdit3("g_stretcher_box_color", glm::value_ptr(g_stretcher_box_color));
-                ImGui::DragFloat("g_stretcher_box_width", &g_stretcher_box_width, 1.0f, line_width_min, line_width_max);
-
-                ImGui::Separator();
-                ImGui::DragFloat("g_point_cloud_point_size", &g_point_cloud_point_size, 1.0f, point_size_min, point_size_max);
-
-                ImGui::Separator();
-                ImGui::DragFloat("g_point_cloud_bbox_width", &g_point_cloud_bbox_width, 1.0f, line_width_min, line_width_max);
-                ImGui::DragFloat("g_point_cloud_bbox_in_obb_width", &g_point_cloud_bbox_in_obb_width, 1.0f, line_width_min, line_width_max);
-                ImGui::DragFloat("g_point_cloud_bbox_in_obb_proximity_width", &g_point_cloud_bbox_in_obb_proximity_width, 1.0f, line_width_min, line_width_max);
-
-                ImGui::Separator();
-                ImGui::Checkbox("g_point_cloud_bbox_draw", &g_point_cloud_bbox_draw);
-                ImGui::Checkbox("g_point_cloud_bbox_in_obb_draw", &g_point_cloud_bbox_in_obb_draw);
-                ImGui::Checkbox("g_point_cloud_bbox_in_obb_proximity_draw", &g_point_cloud_bbox_in_obb_proximity_draw);
-
-                ImGui::Separator();
-                ImGui::Checkbox("g_point_cloud_bucket_draw", &g_point_cloud_bucket_draw);
-                ImGui::Checkbox("g_point_cloud_bucket_in_obb_draw", &g_point_cloud_bucket_in_obb_draw);
-                ImGui::Checkbox("g_point_cloud_bucket_in_obb_proximity_draw", &g_point_cloud_bucket_in_obb_proximity_draw);
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Trrajectory"))
-            {
-                if (g_trajectory_orientations_mat33.size())
-                {
-                    const uint32_t zero                  = 0U;
-                    const uint32_t max_orientation_index = static_cast<uint32_t>(g_trajectory_orientations_mat33.size()) - 1U;
-
-                    ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), max_orientation_index, static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
-                    ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
-                    ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
-                    ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
-                }
-                else
-                {
-                    ImGui::TextColored({1.0f, 0.0f, 0.0f, 1.0f}, "Can not set index of trajectory pose - load trajectory!");
-                }
-
-                ImGui::TreePop();
-            }
-
-            ImGui::Separator();
-            if (ImGui::TreeNode("Buckets"))
-            {
-                if (ImGui::Button("Set all draw ON"))
-                {
-                    for (auto& [ID, bucket] : g_buckets)
-                    {
-                        bucket.draw = true;
-                    }
-                }
-
-                if (ImGui::Button("Set all draw OFF"))
-                {
-                    for (auto& [ID, bucket] : g_buckets)
-                    {
-                        bucket.draw = false;
-                    }
-                }
-
-                if (ImGui::TreeNode("Cave buckets"))
-                {
-                    ImGui::Text("buckets = %zu", g_buckets.size());
-
-                    for (auto& [ID, bucket] : g_buckets)
-                    {
-                        if (ImGui::TreeNode(&ID, "[%d, %d, %d]", ID.x, ID.y, ID.z))
-                        {
-                            ImGui::Checkbox("draw", &bucket.draw);
-
-                            ImGui::Text("aabb.min : %.3f, %.3f, %.3f", bucket.aabb.min.x, bucket.aabb.min.y, bucket.aabb.min.z);
-                            ImGui::Text("aabb.max   : %.3f, %.3f, %.3f", bucket.aabb.max.x, bucket.aabb.max.y, bucket.aabb.max.z);
-
-                            PointCloudLOD* current = bucket.lods;
-                            int            lod     = 0;
-                            while (current)
-                            {
-                                if (ImGui::TreeNode((void*)(intptr_t)lod, "LOD %d", lod))
-                                {
-                                    ImGui::Text("min : %.3f, %.3f, %.3f", current->min.x, current->min.y, current->min.z);
-                                    ImGui::Text("max : %.3f, %.3f, %.3f", current->max.x, current->max.y, current->max.z);
-                                    ImGui::Text("VAO = %u, VBO = %u, points = %zu", current->vao, current->vbo, current->points.size());
-
-                                    ImGui::TreePop();
-                                }
-
-                                current = current->next;
-                                ++lod;
-                            }
-
-                            ImGui::TreePop();
-                        }
-                    }
-                    ImGui::TreePop();
-                }
-
-                ImGui::TreePop();
-            }
-        }
-
-        ImGui::Checkbox("g_modify_current_pose_with_gizmo", &g_modify_current_pose_with_gizmo);
-
-        ImGui::Separator();
-        ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
-        ImGui::SameLine();
-        if (ImGui::Button("Snap"))
-        {
-            if (g_trajectory_positions.size())
-            {
-                snap_camera_target_to_trajectory(ctx.cameras[0], g_trajectory_positions[g_trajectory_index].position);
-            }
-        }
-        if (g_lock_viewport0_target_to_trajectory)
-        {
-            ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
-        }
-
-        ImGui::End();
+        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(g_buckets, stretcher_obb, user_settings.collision.radious);
 
         if (g_modify_current_pose_with_gizmo)
         {
@@ -1129,72 +983,39 @@ int main()
                             continue;
                         }
 
-                        if (g_use_fine_picking)
+                        // simple bounding-box picking using record extent
+                        glm::vec3 bmin = bucket.aabb.min;
+                        glm::vec3 bmax = bucket.aabb.max;
+
+                        float tmin = 0.0f, tmax = 0.0f;
+
+                        for (int i = 0; i < 3; ++i)
                         {
-                            PointCloudLOD* lod = bucket.lods;
-                            while (lod->next)
+                            if (std::abs(ray_dir[i]) < 1e-6f)
                             {
-                                lod = lod->next;
-                            }
-
-                            // check all points in last LOD
-                            for (const auto& p : lod->points)
-                            {
-                                const glm::vec3& point    = p.position;
-                                glm::vec3        diff     = point - camera_pos;
-                                float            proj_len = glm::dot(diff, ray_dir);
-
-                                if (proj_len >= closest_dist)
-                                    continue;
-
-                                glm::vec3 closest_point = camera_pos + ray_dir * proj_len;
-                                float     dist_to_ray   = glm::length(point - closest_point);
-
-                                if (dist_to_ray <= PICK_RADIUS)
+                                if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
                                 {
-                                    closest_dist  = proj_len;
-                                    picked_record = &bucket;
-                                    picked_id     = ID;
+                                    tmin = tmax = -1.0f;
                                     break;
                                 }
                             }
+                            else
+                            {
+                                float invD = 1.0f / ray_dir[i];
+                                float t0   = (bmin[i] - camera_pos[i]) * invD;
+                                float t1   = (bmax[i] - camera_pos[i]) * invD;
+                                if (t0 > t1)
+                                    std::swap(t0, t1);
+                                tmin = (i == 0) ? t0 : std::max(tmin, t0);
+                                tmax = (i == 0) ? t1 : std::min(tmax, t1);
+                            }
                         }
-                        else
+
+                        if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
                         {
-                            // simple bounding-box picking using record extent
-                            glm::vec3 bmin = bucket.aabb.min;
-                            glm::vec3 bmax = bucket.aabb.max;
-
-                            float tmin = 0.0f, tmax = 0.0f;
-
-                            for (int i = 0; i < 3; ++i)
-                            {
-                                if (std::abs(ray_dir[i]) < 1e-6f)
-                                {
-                                    if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
-                                    {
-                                        tmin = tmax = -1.0f;
-                                        break;
-                                    }
-                                }
-                                else
-                                {
-                                    float invD = 1.0f / ray_dir[i];
-                                    float t0   = (bmin[i] - camera_pos[i]) * invD;
-                                    float t1   = (bmax[i] - camera_pos[i]) * invD;
-                                    if (t0 > t1)
-                                        std::swap(t0, t1);
-                                    tmin = (i == 0) ? t0 : std::max(tmin, t0);
-                                    tmax = (i == 0) ? t1 : std::min(tmax, t1);
-                                }
-                            }
-
-                            if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
-                            {
-                                closest_dist  = tmin;
-                                picked_record = &bucket;
-                                picked_id     = ID;
-                            }
+                            closest_dist  = tmin;
+                            picked_record = &bucket;
+                            picked_id     = ID;
                         }
                     }
 
@@ -1227,93 +1048,100 @@ int main()
             compute_camera_frustum_planes(view, projection, frustum);
 
             // ORIGIN
-            if (g_draw_origin)
+            if (user_settings.origin.draw_enable)
             {
-                glLineWidth(g_origin_width);
+                glLineWidth(user_settings.origin.width);
                 origin_program->Bind();
                 origin_program->PushUniform16F32("u_MVP", MVP);
-                origin_program->PushUniform1F32("u_Scale", g_origin_scale);
+                origin_program->PushUniform1F32("u_Scale", user_settings.origin.scale);
                 origin_vao->Bind();
                 origin_vao->DrawArray(GL_LINES, 6);
                 glLineWidth(1.0f);
             }
 
             // CAMERA_TARGET
-            if (g_draw_camera_target)
+            if (user_settings.target.draw_enable)
             {
-                glLineWidth(g_target_width);
+                glLineWidth(user_settings.target.width);
                 camera_target_program->Bind();
                 camera_target_program->PushUniform16F32("u_MVP", MVP);
                 camera_target_program->PushUniform3F32("u_Translation", cam.target);
-                camera_target_program->PushUniform1F32("u_Scale", g_target_scale);
-                camera_target_program->PushUniform3F32("u_Color", g_target_color);
+                camera_target_program->PushUniform1F32("u_Scale", user_settings.target.scale);
+                camera_target_program->PushUniform3F32("u_Color", user_settings.target.color);
                 target_vao->Bind();
                 target_vao->DrawArray(GL_LINES, 6);
                 glLineWidth(1.0f);
             }
 
             // TRAJECTORY
-            if (g_draw_trajectory && can_draw_trajectory)
+            if (user_settings.trajectory.draw_enable && (g_trajectory_positions.size() && g_trajectory_orientations_mat33.size()))
             {
-                auto start = std::chrono::high_resolution_clock::now();
-
-                glLineWidth(g_trajectory_width);
+                glLineWidth(user_settings.trajectory.width);
                 trajectory_program->Bind();
                 trajectory_program->PushUniform16F32("u_MVP", MVP);
-                trajectory_program->PushUniform3F32("u_Color", g_trajectory_color);
+                trajectory_program->PushUniform3F32("u_Color", user_settings.trajectory.color);
                 g_trajectory_positions_vao->Bind();
                 g_trajectory_positions_vao->DrawArray(GL_LINE_STRIP, g_trajectory_positions.size());
                 glLineWidth(1.0f);
-
-                auto end = std::chrono::high_resolution_clock::now();
-
-                g_cpu_time_draw_trajectory_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
 
             //  STRETCHER
-            if (g_draw_stretcher && can_draw_stretcher)
+            if (user_settings.stretcher.draw_enable && (g_stretcher_vertices.size() && g_stretcher_indices.size()))
             {
-                auto start = std::chrono::high_resolution_clock::now();
-
                 stretcher_program->Bind();
                 stretcher_program->PushUniform16F32("u_MVP", MVP);
                 stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
 
                 g_stretcher_vao->Bind();
                 g_stretcher_vao->DrawElements(GL_TRIANGLES, g_stretcher_indices.size(), 1, 0);
-
-                auto end = std::chrono::high_resolution_clock::now();
-
-                g_cpu_time_draw_stretcher_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
 
             //  STRETCHER BBOX
-            if (g_draw_stretcher_bbox && can_draw_stretcher)
+            if (user_settings.stretcher.draw_enable_bbox && (g_stretcher_vertices.size() && g_stretcher_indices.size()))
             {
-                glLineWidth(g_stretcher_box_width);
+                glLineWidth(user_settings.stretcher.bbox_width);
 
                 bounding_box_stretcher_program->Bind();
                 bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
-                bounding_box_stretcher_program->PushUniform3F32("u_Color", g_stretcher_box_color);
+                bounding_box_stretcher_program->PushUniform3F32("u_Color", user_settings.stretcher.bbox_color);
                 bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
                 g_stretcher_aabb_vao->Bind();
                 g_stretcher_aabb_vao->DrawArray(GL_LINES, 24);
                 glLineWidth(1.0f);
             }
 
-            const bool draw_any_cave_lod = g_point_cloud_bucket_draw || g_point_cloud_bucket_in_obb_draw || g_point_cloud_bucket_in_obb_proximity_draw;
+            const bool draw_any_cave_lod = user_settings.point_cloud.draw_enable_pc_out ||
+                                           user_settings.point_cloud.draw_enable_pc_in_obb ||
+                                           user_settings.point_cloud.draw_enable_pc_in_obb_proximity;
 
             // POINT_CLOUD
-            if (g_draw_point_cloud && can_draw_cave && draw_any_cave_lod)
+            if (user_settings.point_cloud.draw_enable_pc && g_buckets.size() && draw_any_cave_lod)
             {
-                auto start = std::chrono::high_resolution_clock::now();
-
                 glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
 
-                glPointSize(g_point_cloud_point_size);
+                glPointSize(user_settings.point_cloud.point_size);
 
-                point_cloud_program->Bind();
-                point_cloud_program->PushUniform16F32("u_MVP", MVP);
+                const bool use_color_map    = user_settings.point_cloud.display_mode != PointCloudDisplayMode::Intensity;
+                const bool use_position_map = user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPosition ||
+                                              user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity;
+
+                Program* active_point_cloud_program = use_color_map ? point_cloud_color_map_program : point_cloud_program;
+                active_point_cloud_program->Bind();
+                active_point_cloud_program->PushUniform16F32("u_MVP", MVP);
+
+                if (use_color_map)
+                {
+                    active_point_cloud_program->PushUniform3F32("u_ColorMapLow", user_settings.point_cloud.color_map_low);
+                    active_point_cloud_program->PushUniform3F32("u_ColorMapHigh", user_settings.point_cloud.color_map_high);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityMin", g_intensity_min);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (g_intensity_max > g_intensity_min) ? 1.0f / (g_intensity_max - g_intensity_min) : 1.0f);
+                    active_point_cloud_program->PushUniform1F32("u_UsePosition", use_position_map ? 1.0f : 0.0f);
+                    active_point_cloud_program->PushUniform3F32("u_PositionMin", g_cave_aabb.min);
+                    const glm::vec3 position_extent = glm::max(g_cave_aabb.max - g_cave_aabb.min, glm::vec3(1e-6f));
+                    active_point_cloud_program->PushUniform3F32("u_PositionInvRange", 1.0f / position_extent);
+                    active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
+                                                                                            user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity ? 1.0f : 0.0f);
+                }
 
                 for (auto& [ID, bucket] : g_buckets)
                 {
@@ -1342,21 +1170,21 @@ int main()
                     const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
                     const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
 
-                    if (is_in_obb && g_point_cloud_bucket_in_obb_draw)
+                    if (is_in_obb && user_settings.point_cloud.draw_enable_pc_in_obb)
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
                         continue;
                     }
 
-                    if (is_on_obb_proximity && g_point_cloud_bucket_in_obb_proximity_draw)
+                    if (is_on_obb_proximity && user_settings.point_cloud.draw_enable_pc_in_obb_proximity)
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
                         continue;
                     }
 
-                    if (g_point_cloud_bucket_draw && !(is_in_obb || is_on_obb_proximity))
+                    if (user_settings.point_cloud.draw_enable_pc_out && !(is_in_obb || is_on_obb_proximity))
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
@@ -1365,19 +1193,15 @@ int main()
                 }
 
                 glPointSize(1.0f);
-
-                auto end = std::chrono::high_resolution_clock::now();
-
-                g_cpu_time_draw_cave_buckets_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
 
-            const bool draw_any_cave_boxes = g_point_cloud_bbox_draw || g_point_cloud_bbox_in_obb_draw || g_point_cloud_bbox_in_obb_proximity_draw;
+            const bool draw_any_cave_boxes = user_settings.point_cloud.draw_enable_bbox_out ||
+                                             user_settings.point_cloud.draw_enable_bbox_in_obb ||
+                                             user_settings.point_cloud.draw_enable_bbox_in_obb_proximity;
 
             // POINT CLOUD BOXES
-            if (g_draw_bounding_box && can_draw_bounding_boxes && (draw_any_cave_boxes))
+            if (user_settings.point_cloud.draw_enable_bbox && g_buckets.size() && (draw_any_cave_boxes))
             {
-                auto start = std::chrono::high_resolution_clock::now();
-
                 glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
 
                 bounding_box_program->Bind();
@@ -1393,9 +1217,9 @@ int main()
                     const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
                     const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
 
-                    if (is_in_obb && g_point_cloud_bbox_in_obb_draw)
+                    if (is_in_obb && user_settings.point_cloud.draw_enable_bbox_in_obb)
                     {
-                        glLineWidth(g_point_cloud_bbox_in_obb_width);
+                        glLineWidth(user_settings.point_cloud.bbox_width_in_obb);
                         glm::vec3 red(1.0f, 0.0f, 0.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", red);
@@ -1407,9 +1231,9 @@ int main()
 
                         continue;
                     }
-                    else if (is_on_obb_proximity && g_point_cloud_bbox_in_obb_proximity_draw)
+                    else if (is_on_obb_proximity && user_settings.point_cloud.draw_enable_bbox_in_obb_proximity)
                     {
-                        glLineWidth(g_point_cloud_bbox_in_obb_proximity_width);
+                        glLineWidth(user_settings.point_cloud.bbox_width_in_obb_proximity);
                         glm::vec3 blue(0.0f, 0.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", blue);
@@ -1421,9 +1245,9 @@ int main()
 
                         continue;
                     }
-                    else if (g_point_cloud_bbox_draw && !(is_in_obb || is_on_obb_proximity))
+                    else if (user_settings.point_cloud.draw_enable_bbox_out && !(is_in_obb || is_on_obb_proximity))
                     {
-                        glLineWidth(g_point_cloud_bbox_width);
+                        glLineWidth(user_settings.point_cloud.bbox_width);
                         glm::vec3 white(1.0f, 1.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", white);
@@ -1436,10 +1260,6 @@ int main()
                         continue;
                     }
                 }
-
-                auto end = std::chrono::high_resolution_clock::now();
-
-                g_cpu_time_draw_cave_buckets_bbox_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count() / 1'000'000.0f;
             }
         };
 

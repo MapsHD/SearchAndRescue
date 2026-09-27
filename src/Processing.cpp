@@ -45,8 +45,7 @@ void bucketize_point_cloud(
     const size_t                       D,
     const size_t                       L,
     const size_t                       N,
-    const bool                         use_centered,
-    const bool                         mark_draw)
+    const bool                         use_centered)
 {
     out_buckets.clear();
 
@@ -77,7 +76,7 @@ void bucketize_point_cloud(
                 bucket.aabb.max = bucket.aabb.min + glm::vec3(E);
             }
 
-            bucket.draw = mark_draw;
+            bucket.draw = true;
         }
         else
         {

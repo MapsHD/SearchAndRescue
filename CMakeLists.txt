@@ -50,10 +50,13 @@ target_sources(cave-traversal-tool
         external/glad/src/glad.c
         src/Buffer.cpp
         src/Camera.cpp
+        src/Debug.cpp
         src/ErrorCallbacks.cpp
         src/FileIO.cpp
+        src/PFDWrapper.cpp
         src/Processing.cpp
         src/Program.cpp
+        src/UserSettings.cpp
         src/VertexArray.cpp
         src/Shaders.cpp
     PRIVATE
@@ -94,6 +97,7 @@ target_include_directories(cave-traversal-tool
         include
     PRIVATE
         external/glm
+        external/json/include
         external/glfw/include
         external/glad/include
         external/spdlog/include
