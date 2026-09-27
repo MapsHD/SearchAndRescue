@@ -297,7 +297,7 @@ void main()
  
     const float t = (u_UsePosition > 0.0f) ? position_t.g : intensity_t;
 
-    vec3 color = MagmaColormap(t);
+    vec3 color = TurboColormap(t);
 
     if (u_MultiplyIntensity > 0.0f)
     {

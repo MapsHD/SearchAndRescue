@@ -1,6 +1,6 @@
 AccessModifierOffset: -4
-AlignConsecutiveAssignments: true
-AlignConsecutiveDeclarations: true
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveDeclarations: Consecutive
 BraceWrapping: 
   AfterCaseLabel: false
   AfterClass: false
