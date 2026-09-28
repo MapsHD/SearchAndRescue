@@ -229,6 +229,8 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Collision"))
         {
             ImGui::DragFloat("Radious", &user_settings.collision.radious, 0.1f, 0.0f, FLT_MAX);
+            ImGui::DragFloat("Points size", &user_settings.collision.points_size, 0.1f, 0.1f, 16.0f, "%.1f");
+            ImGui::ColorEdit3("Points color", glm::value_ptr(user_settings.collision.points_color));
             ImGui::TreePop();
         }
     }
@@ -280,7 +282,9 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
           {"draw_enable_pc_in_obb_proximity", user_settings.point_cloud.draw_enable_pc_in_obb_proximity},
           {"display_mode", static_cast<int32_t>(user_settings.point_cloud.display_mode)}}},
         {"collision",
-         {{"radious", user_settings.collision.radious}}}};
+         {{"radious", user_settings.collision.radious},
+          {"points_size", user_settings.collision.points_size},
+          {"points_color", Vec3ToJSON(user_settings.collision.points_color)}}}};
 
     std::ofstream file(path);
     if (!file)
@@ -342,13 +346,15 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*point_cloud, "draw_enable_pc_in_obb", loaded.point_cloud.draw_enable_pc_in_obb) &&
           ReadSetting(*point_cloud, "draw_enable_pc_in_obb_proximity", loaded.point_cloud.draw_enable_pc_in_obb_proximity) &&
           ReadSetting(*point_cloud, "display_mode", loaded.point_cloud.display_mode_value) &&
-          ReadSetting(*collision, "radious", loaded.collision.radious)))
+          ReadSetting(*collision, "radious", loaded.collision.radious) &&
+          ReadSetting(*collision, "points_size", loaded.collision.points_size)))
         return false;
 
     Vec3FromJSON(opengl, "clear_color", loaded.opengl.clear_color);
     Vec3FromJSON(target, "color", loaded.target.color);
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
+    Vec3FromJSON(collision, "points_color", loaded.collision.points_color);
 
     if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
         return false;

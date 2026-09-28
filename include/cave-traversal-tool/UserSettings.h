@@ -88,6 +88,9 @@ struct UserSettings
     struct
     {
         float radious = 3.0f;
+
+        float     points_size  = 8.0f;
+        glm::vec3 points_color = {1.0f, 0.0f, 1.0f};
     } collision;
 };
 

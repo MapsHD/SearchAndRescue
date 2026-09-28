@@ -1350,17 +1350,15 @@ int main()
                                            _user_settings.point_cloud.draw_enable_pc_in_obb ||
                                            _user_settings.point_cloud.draw_enable_pc_in_obb_proximity;
 
-            // COLLISION POINTS : first-LOD points inside the stretcher OBB, drawn pink with bigger point size
+            // COLLISION POINTS : first-LOD points inside the stretcher OBB, drawn with configurable color and point size
             if (_user_settings.point_cloud.draw_enable_pc && _project_data.buckets.size() && collision_point_count > 0)
             {
-                const glm::vec3 pink(1.0f, 0.4f, 0.7f);
-
-                glPointSize(3.0f);
+                glPointSize(_user_settings.collision.points_size);
 
                 // Trajectory program : u_MVP + u_Color with position-only layout, matches collision points VAO
                 trajectory_program->Bind();
                 trajectory_program->PushUniform16F32("u_MVP", MVP);
-                trajectory_program->PushUniform3F32("u_Color", pink);
+                trajectory_program->PushUniform3F32("u_Color", _user_settings.collision.points_color);
 
                 _project_data.collision_points_vao->Bind();
                 _project_data.collision_points_vao->DrawArray(GL_POINTS, static_cast<uint32_t>(collision_point_count));
