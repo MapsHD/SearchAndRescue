@@ -41,6 +41,13 @@
 
 #include <ImGuizmo.h>
 
+struct GuiState
+{
+    bool display_project_tab       = true;
+    bool display_user_settings_tab = true;
+    bool display_debug_tab         = false;
+};
+
 // ProjectData instance : owns CPU and GPU side data for dataset and file paths
 struct ProjectData
 {
@@ -81,13 +88,9 @@ struct ProjectData
     VertexArray* trajectory_positions_vao = nullptr;
 };
 
-static bool _display_project_tab       = true;
-static bool _display_user_settings_tab = true;
-static bool _display_debug_tab         = false;
-
+static GuiState     _gui_state    = {};
 static UserSettings user_settings = {};
-
-static ProjectData g_project_data{};
+static ProjectData  g_project_data{};
 
 static bool    g_use_fixed_lod   = true;
 static int32_t g_fixed_lod_index = 0;
@@ -624,9 +627,9 @@ int main()
             {
                 if (ImGui::BeginMenu("Display tabs"))
                 {
-                    ImGui::MenuItem("Display project tab", nullptr, &_display_project_tab);
-                    ImGui::MenuItem("Display user setting tab", nullptr, &_display_user_settings_tab);
-                    ImGui::MenuItem("Display debug tab", nullptr, &_display_debug_tab);
+                    ImGui::MenuItem("Display project tab", nullptr, &_gui_state.display_project_tab);
+                    ImGui::MenuItem("Display user setting tab", nullptr, &_gui_state.display_user_settings_tab);
+                    ImGui::MenuItem("Display debug tab", nullptr, &_gui_state.display_debug_tab);
 
                     ImGui::EndMenu();
                 }
@@ -637,9 +640,9 @@ int main()
         }
 
         {
-            if (_display_project_tab)
+            if (_gui_state.display_project_tab)
             {
-                if (ImGui::Begin("Application", &_display_project_tab))
+                if (ImGui::Begin("Application", &_gui_state.display_project_tab))
                 {
                     if (ImGui::TreeNode("Viewport"))
                     {
@@ -805,14 +808,14 @@ int main()
                 ImGui::End();
             }
 
-            if (_display_user_settings_tab)
+            if (_gui_state.display_user_settings_tab)
             {
-                UserSettingsImGUI(user_settings, _display_user_settings_tab);
+                UserSettingsImGUI(user_settings, _gui_state.display_user_settings_tab);
             }
 
-            if (_display_debug_tab)
+            if (_gui_state.display_debug_tab)
             {
-                DebugImGUI(g_project_data.buckets, _display_debug_tab);
+                DebugImGUI(g_project_data.buckets, _gui_state.display_debug_tab);
             }
         }
 
