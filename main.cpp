@@ -54,6 +54,10 @@ struct ProjectData
     PointCloudBucket            buckets{};
     size_t                      max_lod_count = 0;
 
+    AABB  cave_aabb     = {};
+    float intensity_min = 0.0f;
+    float intensity_max = 1.0f;
+
     // CPU side data : stretcher (object)
     std::vector<ColorPoint> stretcher_vertices{};
     std::vector<uint32_t>   stretcher_indices{};
@@ -237,11 +241,6 @@ static bool rebuild_stretcher_opengl_data()
     return true;
 }
 
-static float g_intensity_min = 0.0f;
-static float g_intensity_max = 1.0f;
-
-static AABB g_cave_aabb{};
-
 static bool rebuild_cave_opengl_data()
 {
     const std::vector<VertexBufferAttributeLayout> layout_point_intensity = opengl_vertex_array_get_vertex_layout<PointIntensity>();
@@ -299,19 +298,19 @@ static bool rebuild_cave_opengl_data()
 
     g_project_data.buckets.clear();
 
-    g_intensity_min = g_project_data.cave_vertices.front().intensity;
-    g_intensity_max = g_intensity_min;
+    g_project_data.intensity_min = g_project_data.cave_vertices.front().intensity;
+    g_project_data.intensity_max = g_project_data.intensity_min;
 
-    g_cave_aabb.min = g_project_data.cave_vertices.front().position;
-    g_cave_aabb.max = g_cave_aabb.min;
+    g_project_data.cave_aabb.min = g_project_data.cave_vertices.front().position;
+    g_project_data.cave_aabb.max = g_project_data.cave_aabb.min;
 
     for (const auto& p : g_project_data.cave_vertices)
     {
-        g_intensity_min = std::min(g_intensity_min, p.intensity);
-        g_intensity_max = std::max(g_intensity_max, p.intensity);
+        g_project_data.intensity_min = std::min(g_project_data.intensity_min, p.intensity);
+        g_project_data.intensity_max = std::max(g_project_data.intensity_max, p.intensity);
 
-        g_cave_aabb.min = glm::min(g_cave_aabb.min, p.position);
-        g_cave_aabb.max = glm::max(g_cave_aabb.max, p.position);
+        g_project_data.cave_aabb.min = glm::min(g_project_data.cave_aabb.min, p.position);
+        g_project_data.cave_aabb.max = glm::max(g_project_data.cave_aabb.max, p.position);
     }
 
     bucketize_point_cloud(g_project_data.cave_vertices, g_project_data.buckets,
@@ -1144,11 +1143,11 @@ int main()
 
                 if (use_color_map)
                 {
-                    active_point_cloud_program->PushUniform1F32("u_IntensityMin", g_intensity_min);
-                    active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (g_intensity_max > g_intensity_min) ? 1.0f / (g_intensity_max - g_intensity_min) : 1.0f);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityMin", g_project_data.intensity_min);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (g_project_data.intensity_max > g_project_data.intensity_min) ? 1.0f / (g_project_data.intensity_max - g_project_data.intensity_min) : 1.0f);
                     active_point_cloud_program->PushUniform1F32("u_UsePosition", use_position_map ? 1.0f : 0.0f);
-                    active_point_cloud_program->PushUniform3F32("u_PositionMin", g_cave_aabb.min);
-                    const glm::vec3 position_extent = glm::max(g_cave_aabb.max - g_cave_aabb.min, glm::vec3(1e-6f));
+                    active_point_cloud_program->PushUniform3F32("u_PositionMin", g_project_data.cave_aabb.min);
+                    const glm::vec3 position_extent = glm::max(g_project_data.cave_aabb.max - g_project_data.cave_aabb.min, glm::vec3(1e-6f));
                     active_point_cloud_program->PushUniform3F32("u_PositionInvRange", 1.0f / position_extent);
                     active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
                                                                                                user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity
