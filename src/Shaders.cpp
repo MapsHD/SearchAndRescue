@@ -208,6 +208,7 @@ layout(location = 3) uniform float u_MultiplyIntensity = float(0.0f);
 layout(location = 4) uniform float u_UsePosition       = float(0.0f);
 layout(location = 5) uniform vec3  u_PositionMin        = vec3(0.0f);
 layout(location = 6) uniform vec3  u_PositionInvRange   = vec3(1.0f);
+layout(location = 7) uniform int   u_ColorMapSelect     = int(0);
 
 layout(location = 0) out BLOCK
 {
@@ -301,10 +302,32 @@ void main()
 {
     const vec3  position_t  = clamp((in_Position  - u_PositionMin)  * u_PositionInvRange,  0.0f, 1.0f);
     const float intensity_t = clamp((in_Intensity - u_IntensityMin) * u_IntensityInvRange, 0.0f, 1.0f);
- 
+
     const float t = (u_UsePosition > 0.0f) ? PositionHash(position_t) : intensity_t;
 
-    vec3 color = TurboColormap(t);
+    // Colormap selected from user settings via u_ColorMapSelect
+    vec3 color = vec3(1.0f, 1.0f, 1.0f);
+
+    if (u_ColorMapSelect == 0)
+    {
+        color = TurboColormap(t);
+    }
+    else if (u_ColorMapSelect == 1)
+    {
+        color = ViridisColormap(t);
+    }
+    else if (u_ColorMapSelect == 2)
+    {
+        color = PlasmaColormap(t);
+    }
+    else if (u_ColorMapSelect == 3)
+    {
+        color = MagmaColormap(t);
+    }
+    else if (u_ColorMapSelect == 4)
+    {
+        color = InfernoColormap(t);
+    }
 
     if (u_MultiplyIntensity > 0.0f)
     {

@@ -14,6 +14,15 @@ enum class PointCloudDisplayMode : int32_t
     ColorMapPositionTimesIntensity = 4
 };
 
+enum class ColorMapType : int32_t
+{
+    Turbo   = 0,
+    Viridis = 1,
+    Plasma  = 2,
+    Magma   = 3,
+    Inferno = 4
+};
+
 struct UserSettings
 {
     struct
@@ -81,8 +90,11 @@ struct UserSettings
 
         PointCloudDisplayMode display_mode = PointCloudDisplayMode::ColorMap;
 
+        ColorMapType colormap = ColorMapType::Turbo;
+
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
+        int32_t colormap_value     = 0;
     } point_cloud;
 
     struct

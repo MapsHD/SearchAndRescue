@@ -200,6 +200,15 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                 }
             }
 
+            {
+                const char* const colormaps = "Turbo\0Viridis\0Plasma\0Magma\0Inferno\0";
+                int32_t           colormap  = static_cast<int32_t>(user_settings.point_cloud.colormap);
+                if (ImGui::Combo("Colormap", &colormap, colormaps))
+                {
+                    user_settings.point_cloud.colormap = static_cast<ColorMapType>(colormap);
+                }
+            }
+
             ImGui::DragFloat("BBOX width", &user_settings.point_cloud.bbox_width, 0.25f, 1.0f, 8.0f);
             ImGui::DragFloat("BBOX width in OBB", &user_settings.point_cloud.bbox_width_in_obb, 0.25f, 1.0f, 8.0f);
             ImGui::DragFloat("BBOX width in OBB proximity", &user_settings.point_cloud.bbox_width_in_obb_proximity, 0.25f, 1.0f, 8.0f);
@@ -280,7 +289,8 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
           {"draw_enable_pc_out", user_settings.point_cloud.draw_enable_pc_out},
           {"draw_enable_pc_in_obb", user_settings.point_cloud.draw_enable_pc_in_obb},
           {"draw_enable_pc_in_obb_proximity", user_settings.point_cloud.draw_enable_pc_in_obb_proximity},
-          {"display_mode", static_cast<int32_t>(user_settings.point_cloud.display_mode)}}},
+          {"display_mode", static_cast<int32_t>(user_settings.point_cloud.display_mode)},
+          {"colormap", static_cast<int32_t>(user_settings.point_cloud.colormap)}}},
         {"collision",
          {{"radious", user_settings.collision.radious},
           {"points_size", user_settings.collision.points_size},
@@ -346,6 +356,7 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*point_cloud, "draw_enable_pc_in_obb", loaded.point_cloud.draw_enable_pc_in_obb) &&
           ReadSetting(*point_cloud, "draw_enable_pc_in_obb_proximity", loaded.point_cloud.draw_enable_pc_in_obb_proximity) &&
           ReadSetting(*point_cloud, "display_mode", loaded.point_cloud.display_mode_value) &&
+          ReadSetting(*point_cloud, "colormap", loaded.point_cloud.colormap_value) &&
           ReadSetting(*collision, "radious", loaded.collision.radious) &&
           ReadSetting(*collision, "points_size", loaded.collision.points_size)))
         return false;
@@ -359,6 +370,10 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
         return false;
     loaded.point_cloud.display_mode = static_cast<PointCloudDisplayMode>(loaded.point_cloud.display_mode_value);
+
+    if (loaded.point_cloud.colormap_value < 0 || loaded.point_cloud.colormap_value > 4)
+        return false;
+    loaded.point_cloud.colormap = static_cast<ColorMapType>(loaded.point_cloud.colormap_value);
 
     user_settings_out = loaded;
     return true;
