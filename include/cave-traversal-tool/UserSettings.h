@@ -14,11 +14,20 @@ enum class PointCloudDisplayMode : int32_t
     ColorMapPositionTimesIntensity = 4
 };
 
+enum class ColorMapType : int32_t
+{
+    Turbo   = 0,
+    Viridis = 1,
+    Plasma  = 2,
+    Magma   = 3,
+    Inferno = 4
+};
+
 struct UserSettings
 {
     struct
     {
-        glm::vec3 clear_color = {0.2f, 0.2f, 0.2f};
+        glm::vec3 clear_color = {0.5f, 0.5f, 0.5f};
     } opengl;
 
     struct
@@ -69,9 +78,9 @@ struct UserSettings
         float bbox_width_in_obb           = 4.0f;
         float bbox_width_in_obb_proximity = 3.0f;
 
-        bool draw_enable_bbox                  = true;
+        bool draw_enable_bbox                  = false;
         bool draw_enable_bbox_out              = false;
-        bool draw_enable_bbox_in_obb           = true;
+        bool draw_enable_bbox_in_obb           = false;
         bool draw_enable_bbox_in_obb_proximity = false;
 
         bool draw_enable_pc                  = true;
@@ -79,19 +88,21 @@ struct UserSettings
         bool draw_enable_pc_in_obb           = true;
         bool draw_enable_pc_in_obb_proximity = true;
 
-        PointCloudDisplayMode display_mode = PointCloudDisplayMode::Intensity;
+        PointCloudDisplayMode display_mode = PointCloudDisplayMode::ColorMap;
+
+        ColorMapType colormap = ColorMapType::Turbo;
 
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
-
-        // used only when display mode is ColorMap or ColorMapTimesIntensity
-        glm::vec3 color_map_low  = {0.0f, 0.0f, 1.0f};
-        glm::vec3 color_map_high = {1.0f, 0.0f, 0.0f};
+        int32_t colormap_value     = 0;
     } point_cloud;
 
     struct
     {
         float radious = 3.0f;
+
+        float     points_size  = 8.0f;
+        glm::vec3 points_color = {1.0f, 0.0f, 1.0f};
     } collision;
 };
 
