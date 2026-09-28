@@ -1056,10 +1056,11 @@ int main()
             static bool prev_mouse_pressed = false;
 
             bool ctrl_pressed  = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
+            bool alt_pressed   = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
             bool mouse_pressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
 
-            // Trigger once when mouse goes from released -> pressed, while Ctrl is held
-            bool new_click     = mouse_pressed && !prev_mouse_pressed && ctrl_pressed;
+            // Trigger once when mouse goes from released -> pressed, while Ctrl (bucket pick) or Alt (trajectory pick) is held
+            bool new_click     = mouse_pressed && !prev_mouse_pressed && (ctrl_pressed || alt_pressed);
             prev_mouse_pressed = mouse_pressed;
 
             if (new_click && !ImGui::GetIO().WantCaptureMouse)
@@ -1091,70 +1092,120 @@ int main()
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
-                    PointCloudRecord* picked_record = nullptr;
-                    glm::ivec3        picked_id{};
-                    float             closest_dist = std::numeric_limits<float>::max();
-
-                    const float PICK_RADIUS = 0.1f;
-
-                    for (auto& [ID, bucket] : _project_data.buckets)
+                    if (alt_pressed)
                     {
-                        glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
-                        glm::vec3 to_center = center - camera_pos;
+                        // Pick closest trajectory point to the cast ray (within 0.25 m of the ray)
+                        const float TRAJECTORY_PICK_RADIUS = 0.25f;
 
-                        if (glm::dot(to_center, camera_forward) <= 0.0f)
+                        uint32_t best_index = 0;
+                        float    best_dist  = TRAJECTORY_PICK_RADIUS;
+                        float    best_t     = std::numeric_limits<float>::max();
+                        bool     found      = false;
+
+                        for (size_t i = 0; i < _project_data.trajectory_positions.size(); ++i)
                         {
-                            continue;
+                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - camera_pos;
+                            const float     t        = glm::dot(to_point, ray_dir);
+
+                            if (t <= 0.0f)
+                            {
+                                continue;
+                            }
+
+                            const float d = glm::length(to_point - t * ray_dir);
+
+                            if (d > TRAJECTORY_PICK_RADIUS)
+                            {
+                                continue;
+                            }
+
+                            // Prefer smallest distance to ray, then the point closest to the camera
+                            if (!found || d < best_dist - 1e-4f || (d < best_dist + 1e-4f && t < best_t))
+                            {
+                                found      = true;
+                                best_dist  = d;
+                                best_t     = t;
+                                best_index = static_cast<uint32_t>(i);
+                            }
                         }
 
-                        // simple bounding-box picking using record extent
-                        glm::vec3 bmin = bucket.aabb.min;
-                        glm::vec3 bmax = bucket.aabb.max;
-
-                        float tmin = 0.0f, tmax = 0.0f;
-
-                        for (int i = 0; i < 3; ++i)
+                        if (found)
                         {
-                            if (std::abs(ray_dir[i]) < 1e-6f)
+                            spdlog::info("Trajectory pick in viewport {} : index = [{}] (distance to ray {:.3f} m)", pick_idx, best_index, best_dist);
+                            g_trajectory_index = best_index;
+                        }
+                        else
+                        {
+                            spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", TRAJECTORY_PICK_RADIUS);
+                        }
+                    }
+                    else if (ctrl_pressed)
+                    {
+                        PointCloudRecord* picked_record = nullptr;
+                        glm::ivec3        picked_id{};
+                        float             closest_dist = std::numeric_limits<float>::max();
+
+                        const float PICK_RADIUS = 0.1f;
+
+                        for (auto& [ID, bucket] : _project_data.buckets)
+                        {
+                            glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
+                            glm::vec3 to_center = center - camera_pos;
+
+                            if (glm::dot(to_center, camera_forward) <= 0.0f)
                             {
-                                if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
+                                continue;
+                            }
+
+                            // simple bounding-box picking using record extent
+                            glm::vec3 bmin = bucket.aabb.min;
+                            glm::vec3 bmax = bucket.aabb.max;
+
+                            float tmin = 0.0f, tmax = 0.0f;
+
+                            for (int i = 0; i < 3; ++i)
+                            {
+                                if (std::abs(ray_dir[i]) < 1e-6f)
                                 {
-                                    tmin = tmax = -1.0f;
-                                    break;
+                                    if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
+                                    {
+                                        tmin = tmax = -1.0f;
+                                        break;
+                                    }
+                                }
+                                else
+                                {
+                                    float invD = 1.0f / ray_dir[i];
+                                    float t0   = (bmin[i] - camera_pos[i]) * invD;
+                                    float t1   = (bmax[i] - camera_pos[i]) * invD;
+                                    if (t0 > t1)
+                                        std::swap(t0, t1);
+                                    tmin = (i == 0) ? t0 : std::max(tmin, t0);
+                                    tmax = (i == 0) ? t1 : std::min(tmax, t1);
                                 }
                             }
-                            else
+
+                            if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
                             {
-                                float invD = 1.0f / ray_dir[i];
-                                float t0   = (bmin[i] - camera_pos[i]) * invD;
-                                float t1   = (bmax[i] - camera_pos[i]) * invD;
-                                if (t0 > t1)
-                                    std::swap(t0, t1);
-                                tmin = (i == 0) ? t0 : std::max(tmin, t0);
-                                tmax = (i == 0) ? t1 : std::min(tmax, t1);
+                                closest_dist  = tmin;
+                                picked_record = &bucket;
+                                picked_id     = ID;
                             }
                         }
 
-                        if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
+                        if (picked_record)
                         {
-                            closest_dist  = tmin;
-                            picked_record = &bucket;
-                            picked_id     = ID;
+                            spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
+
+                            glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                            glm::vec3 offset  = pick_cam.position - pick_cam.target;
+                            pick_cam.target   = center;
+                            pick_cam.position = pick_cam.target + offset;
                         }
-                    }
-
-                    if (picked_record)
-                    {
-                        spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
-
-                        glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
-                        glm::vec3 offset  = pick_cam.position - pick_cam.target;
-                        pick_cam.target   = center;
-                        pick_cam.position = pick_cam.target + offset;
-                    }
-                    else
-                    {
-                        spdlog::warn("Picking missed ...");
+                        else
+                        {
+                            spdlog::warn("Picking missed ...");
+                        }
                     }
                 }
             }
