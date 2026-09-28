@@ -164,6 +164,42 @@ OBB aabb_to_obb(const AABB& aabb, const glm::mat4& transform)
     return obb;
 }
 
+bool point_in_obb(const glm::vec3& p, const OBB& obb)
+{
+    // Build an orthonormal-ish basis from the OBB edges and project the point onto it
+    const glm::vec3 u = glm::normalize(obb.conrners[1] - obb.conrners[0]);
+    const glm::vec3 v = glm::normalize(obb.conrners[3] - obb.conrners[0]);
+    const glm::vec3 w = glm::normalize(obb.conrners[4] - obb.conrners[0]);
+
+    float u_min = std::numeric_limits<float>::max(), u_max = -std::numeric_limits<float>::max();
+    float v_min = std::numeric_limits<float>::max(), v_max = -std::numeric_limits<float>::max();
+    float w_min = std::numeric_limits<float>::max(), w_max = -std::numeric_limits<float>::max();
+
+    for (int i = 0; i < 8; ++i)
+    {
+        const glm::vec3& c = obb.conrners[i];
+
+        const float pu = glm::dot(c, u);
+        const float pv = glm::dot(c, v);
+        const float pw = glm::dot(c, w);
+
+        u_min = std::min(u_min, pu);
+        u_max = std::max(u_max, pu);
+        v_min = std::min(v_min, pv);
+        v_max = std::max(v_max, pv);
+        w_min = std::min(w_min, pw);
+        w_max = std::max(w_max, pw);
+    }
+
+    const float pu = glm::dot(p, u);
+    const float pv = glm::dot(p, v);
+    const float pw = glm::dot(p, w);
+
+    return (pu >= u_min && pu <= u_max) &&
+           (pv >= v_min && pv <= v_max) &&
+           (pw >= w_min && pw <= w_max);
+}
+
 std::vector<glm::ivec3> find_buckets_in_aabb(const PointCloudBucket& g_buckets, const AABB& aabb)
 {
     std::vector<glm::ivec3> result;

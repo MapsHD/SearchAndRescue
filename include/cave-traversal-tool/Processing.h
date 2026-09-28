@@ -17,6 +17,8 @@ void bucketize_point_cloud(
 
 OBB aabb_to_obb(const AABB& aabb, const glm::mat4& transform);
 
+bool point_in_obb(const glm::vec3& p, const OBB& obb);
+
 std::vector<glm::ivec3> find_buckets_in_aabb(const PointCloudBucket& g_buckets, const AABB& aabb);
 
 std::pair<std::vector<glm::ivec3>, std::vector<glm::ivec3>> find_buckets_in_obb(const PointCloudBucket& g_buckets, const OBB& obb, const float M);

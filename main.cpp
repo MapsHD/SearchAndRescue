@@ -86,6 +86,13 @@ struct ProjectData
     // GPU side data : trajectory
     Buffer*      trajectory_positions_vbo = nullptr;
     VertexArray* trajectory_positions_vao = nullptr;
+
+    // TODO (m.wlasiuk) : limit based on point cloud statistics (8 * max points in LOD_0 accross PC ... ???) 
+    // GPU side data : collision points between stretcher OBB and point cloud (positions only, color as uniform)
+    static constexpr size_t COLLISION_POINTS_CAPACITY = 1024 * 16;
+
+    Buffer*      collision_points_vbo = nullptr;
+    VertexArray* collision_points_vao = nullptr;
 };
 
 static GuiState     _gui_state     = {};
@@ -633,6 +640,10 @@ int main()
     Buffer*      target_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
     VertexArray* target_vao    = new VertexArray(target_buffer, false, nullptr, false, layout_point);
 
+    // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
+    _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
+    _project_data.collision_points_vao = new VertexArray(_project_data.collision_points_vbo, false, nullptr, false, layout_point);
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
 
@@ -959,6 +970,56 @@ int main()
 
         const OBB  stretcher_obb               = aabb_to_obb(_project_data.stretcher_aabb, stretcher_pose);
         const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(_project_data.buckets, stretcher_obb, _user_settings.collision.radious);
+
+        // Collect first-LOD points of colliding buckets that are inside the stretcher OBB, upload them for rendering
+        size_t collision_point_count = 0;
+        {
+            // TODO(m.wlasiuk) : move this to project + limit amount based on point cloud statistics
+            static std::vector<Point> collision_points{};
+            collision_points.clear();
+
+            for (const glm::ivec3& id : in_obb_ids_in_obb_proximity.first)
+            {
+                auto bucket_it = _project_data.buckets.find(id);
+                if (bucket_it == _project_data.buckets.end())
+                {
+                    continue;
+                }
+
+                PointCloudLOD* first_lod = get_lod_at_index(&bucket_it->second, 0);
+                if (!first_lod)
+                {
+                    continue;
+                }
+
+                for (const PointIntensity& p : first_lod->points)
+                {
+                    if (point_in_obb(p.position, stretcher_obb))
+                    {
+                        collision_points.push_back({p.position});
+
+                        // TODO(m.wlasiuk) : limit amount based on point cloud statistics
+                        if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
+                        {
+                            spdlog::warn("Collision point buffer full : {} points, ignoring the rest", ProjectData::COLLISION_POINTS_CAPACITY);
+                            break;
+                        }
+                    }
+                }
+
+                if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
+                {
+                    break;
+                }
+            }
+
+            collision_point_count = collision_points.size();
+
+            if (collision_point_count > 0)
+            {
+                _project_data.collision_points_vbo->Upload(collision_points.data(), std_vector_size(collision_points));
+            }
+        }
 
         if (g_modify_current_pose_with_gizmo || glfwGetKey(window, GLFW_KEY_G))
         {
@@ -1288,6 +1349,24 @@ int main()
             const bool draw_any_cave_lod = _user_settings.point_cloud.draw_enable_pc_out ||
                                            _user_settings.point_cloud.draw_enable_pc_in_obb ||
                                            _user_settings.point_cloud.draw_enable_pc_in_obb_proximity;
+
+            // COLLISION POINTS : first-LOD points inside the stretcher OBB, drawn pink with bigger point size
+            if (_user_settings.point_cloud.draw_enable_pc && _project_data.buckets.size() && collision_point_count > 0)
+            {
+                const glm::vec3 pink(1.0f, 0.4f, 0.7f);
+
+                glPointSize(3.0f);
+
+                // Trajectory program : u_MVP + u_Color with position-only layout, matches collision points VAO
+                trajectory_program->Bind();
+                trajectory_program->PushUniform16F32("u_MVP", MVP);
+                trajectory_program->PushUniform3F32("u_Color", pink);
+
+                _project_data.collision_points_vao->Bind();
+                _project_data.collision_points_vao->DrawArray(GL_POINTS, static_cast<uint32_t>(collision_point_count));
+
+                glPointSize(1.0f);
+            }
 
             // POINT_CLOUD
             if (_user_settings.point_cloud.draw_enable_pc && _project_data.buckets.size() && draw_any_cave_lod)

@@ -69,9 +69,9 @@ struct UserSettings
         float bbox_width_in_obb           = 4.0f;
         float bbox_width_in_obb_proximity = 3.0f;
 
-        bool draw_enable_bbox                  = true;
+        bool draw_enable_bbox                  = false;
         bool draw_enable_bbox_out              = false;
-        bool draw_enable_bbox_in_obb           = true;
+        bool draw_enable_bbox_in_obb           = false;
         bool draw_enable_bbox_in_obb_proximity = false;
 
         bool draw_enable_pc                  = true;
