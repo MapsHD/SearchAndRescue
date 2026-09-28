@@ -88,9 +88,9 @@ struct ProjectData
     VertexArray* trajectory_positions_vao = nullptr;
 };
 
-static GuiState     _gui_state    = {};
-static UserSettings user_settings = {};
-static ProjectData  g_project_data{};
+static GuiState     _gui_state     = {};
+static UserSettings _user_settings = {};
+static ProjectData  _project_data{};
 
 static bool    g_use_fixed_lod   = true;
 static int32_t g_fixed_lod_index = 0;
@@ -123,7 +123,7 @@ static bool rebuild_trajectory_mat33_opengl_data()
 {
     const std::vector<VertexBufferAttributeLayout> layout_point = opengl_vertex_array_get_vertex_layout<Point>();
 
-    if (g_project_data.trajectory_positions.empty() || g_project_data.trajectory_orientations_mat33.empty())
+    if (_project_data.trajectory_positions.empty() || _project_data.trajectory_orientations_mat33.empty())
     {
         spdlog::error("Refusing to rebuild trajectory OpenGL data : no trajectory points loaded");
         return false;
@@ -131,22 +131,22 @@ static bool rebuild_trajectory_mat33_opengl_data()
 
     g_trajectory_index = 0;
 
-    if (g_project_data.trajectory_positions_vao)
+    if (_project_data.trajectory_positions_vao)
     {
-        spdlog::debug("Deleting old trajectory positions VAO : {}", g_project_data.trajectory_positions_vao->GetID());
-        delete g_project_data.trajectory_positions_vao;
+        spdlog::debug("Deleting old trajectory positions VAO : {}", _project_data.trajectory_positions_vao->GetID());
+        delete _project_data.trajectory_positions_vao;
     }
 
-    if (g_project_data.trajectory_positions_vbo)
+    if (_project_data.trajectory_positions_vbo)
     {
-        spdlog::debug("Deleting old trajectory positions VBO : {}", g_project_data.trajectory_positions_vbo->GetID());
-        delete g_project_data.trajectory_positions_vbo;
+        spdlog::debug("Deleting old trajectory positions VBO : {}", _project_data.trajectory_positions_vbo->GetID());
+        delete _project_data.trajectory_positions_vbo;
     }
 
-    g_project_data.trajectory_positions_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(g_project_data.trajectory_positions), g_project_data.trajectory_positions.data());
-    g_project_data.trajectory_positions_vao = new VertexArray(g_project_data.trajectory_positions_vbo, false, nullptr, false, layout_point);
+    _project_data.trajectory_positions_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.trajectory_positions), _project_data.trajectory_positions.data());
+    _project_data.trajectory_positions_vao = new VertexArray(_project_data.trajectory_positions_vbo, false, nullptr, false, layout_point);
 
-    spdlog::debug("Created VAO [{}] and VBO [{}]", g_project_data.trajectory_positions_vao->GetID(), g_project_data.trajectory_positions_vbo->GetID());
+    spdlog::debug("Created VAO [{}] and VBO [{}]", _project_data.trajectory_positions_vao->GetID(), _project_data.trajectory_positions_vbo->GetID());
 
     return true;
 }
@@ -156,90 +156,90 @@ static bool rebuild_stretcher_opengl_data()
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
 
-    if (g_project_data.stretcher_vertices.empty() || g_project_data.stretcher_indices.empty())
+    if (_project_data.stretcher_vertices.empty() || _project_data.stretcher_indices.empty())
     {
         spdlog::error("Refusing to rebuild stretcher OpenGL data : no stretcher data loaded");
         return false;
     }
 
-    if (g_project_data.stretcher_aabb_vao)
+    if (_project_data.stretcher_aabb_vao)
     {
-        spdlog::debug("Deleting old stretcher AABB positions VAO : {}", g_project_data.stretcher_aabb_vao->GetID());
-        delete g_project_data.stretcher_aabb_vao;
+        spdlog::debug("Deleting old stretcher AABB positions VAO : {}", _project_data.stretcher_aabb_vao->GetID());
+        delete _project_data.stretcher_aabb_vao;
     }
 
-    if (g_project_data.stretcher_aabb_vbo)
+    if (_project_data.stretcher_aabb_vbo)
     {
-        spdlog::debug("Deleting old stretcher AABB positions VBO : {}", g_project_data.stretcher_aabb_vbo->GetID());
-        delete g_project_data.stretcher_aabb_vbo;
+        spdlog::debug("Deleting old stretcher AABB positions VBO : {}", _project_data.stretcher_aabb_vbo->GetID());
+        delete _project_data.stretcher_aabb_vbo;
     }
 
-    if (g_project_data.stretcher_vao)
+    if (_project_data.stretcher_vao)
     {
-        spdlog::debug("Deleting old stretcher positions VAO : {}", g_project_data.stretcher_vao->GetID());
-        delete g_project_data.stretcher_vao;
+        spdlog::debug("Deleting old stretcher positions VAO : {}", _project_data.stretcher_vao->GetID());
+        delete _project_data.stretcher_vao;
     }
 
-    if (g_project_data.stretcher_vbo)
+    if (_project_data.stretcher_vbo)
     {
-        spdlog::debug("Deleting old stretcher positions VBO : {}", g_project_data.stretcher_vbo->GetID());
-        delete g_project_data.stretcher_vbo;
+        spdlog::debug("Deleting old stretcher positions VBO : {}", _project_data.stretcher_vbo->GetID());
+        delete _project_data.stretcher_vbo;
     }
 
-    if (g_project_data.stretcher_index_buffer)
+    if (_project_data.stretcher_index_buffer)
     {
-        spdlog::debug("Deleting old stretcher index IBO : {}", g_project_data.stretcher_index_buffer->GetID());
-        delete g_project_data.stretcher_index_buffer;
+        spdlog::debug("Deleting old stretcher index IBO : {}", _project_data.stretcher_index_buffer->GetID());
+        delete _project_data.stretcher_index_buffer;
     }
 
-    g_project_data.stretcher_aabb.min = g_project_data.stretcher_vertices[0].position;
-    g_project_data.stretcher_aabb.max = g_project_data.stretcher_vertices[0].position;
+    _project_data.stretcher_aabb.min = _project_data.stretcher_vertices[0].position;
+    _project_data.stretcher_aabb.max = _project_data.stretcher_vertices[0].position;
 
-    for (const auto& v : g_project_data.stretcher_vertices)
+    for (const auto& v : _project_data.stretcher_vertices)
     {
         const glm::vec3& p = v.position;
 
-        g_project_data.stretcher_aabb.min = glm::min(g_project_data.stretcher_aabb.min, p);
-        g_project_data.stretcher_aabb.max = glm::max(g_project_data.stretcher_aabb.max, p);
+        _project_data.stretcher_aabb.min = glm::min(_project_data.stretcher_aabb.min, p);
+        _project_data.stretcher_aabb.max = glm::max(_project_data.stretcher_aabb.max, p);
     }
 
     std::vector<Point> line_vertices{
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
 
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
 
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.min.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.max.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.min.z}},
-        {{g_project_data.stretcher_aabb.min.x, g_project_data.stretcher_aabb.max.y, g_project_data.stretcher_aabb.max.z}}};
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
+        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}}};
 
-    g_project_data.stretcher_aabb_vbo = new Buffer(GL_NONE, std_vector_size(line_vertices), line_vertices.data());
-    g_project_data.stretcher_aabb_vao = new VertexArray(g_project_data.stretcher_aabb_vbo, false, nullptr, false, layout_point);
+    _project_data.stretcher_aabb_vbo = new Buffer(GL_NONE, std_vector_size(line_vertices), line_vertices.data());
+    _project_data.stretcher_aabb_vao = new VertexArray(_project_data.stretcher_aabb_vbo, false, nullptr, false, layout_point);
 
-    g_project_data.stretcher_vbo          = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(g_project_data.stretcher_vertices), g_project_data.stretcher_vertices.data());
-    g_project_data.stretcher_index_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(g_project_data.stretcher_indices), g_project_data.stretcher_indices.data());
+    _project_data.stretcher_vbo          = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.stretcher_vertices), _project_data.stretcher_vertices.data());
+    _project_data.stretcher_index_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.stretcher_indices), _project_data.stretcher_indices.data());
 
-    g_project_data.stretcher_vao = new VertexArray(g_project_data.stretcher_vbo, false, g_project_data.stretcher_index_buffer, false, layout_color_point);
+    _project_data.stretcher_vao = new VertexArray(_project_data.stretcher_vbo, false, _project_data.stretcher_index_buffer, false, layout_color_point);
 
-    spdlog::debug("Created VAO [{}], VBO [{}] and IBO [{}]", g_project_data.stretcher_vao->GetID(), g_project_data.stretcher_vbo->GetID(), g_project_data.stretcher_index_buffer->GetID());
+    spdlog::debug("Created VAO [{}], VBO [{}] and IBO [{}]", _project_data.stretcher_vao->GetID(), _project_data.stretcher_vbo->GetID(), _project_data.stretcher_index_buffer->GetID());
 
     return true;
 }
@@ -249,14 +249,14 @@ static bool rebuild_cave_opengl_data()
     const std::vector<VertexBufferAttributeLayout> layout_point_intensity = opengl_vertex_array_get_vertex_layout<PointIntensity>();
     const std::vector<VertexBufferAttributeLayout> layout_point           = opengl_vertex_array_get_vertex_layout<Point>();
 
-    if (g_project_data.cave_vertices.empty())
+    if (_project_data.cave_vertices.empty())
     {
         spdlog::error("Refusing to rebuild cave OpenGL data : no cave points loaded");
         return false;
     }
 
     // Clear old data
-    for (auto& [ID, bucket] : g_project_data.buckets)
+    for (auto& [ID, bucket] : _project_data.buckets)
     {
         // Clear LODs
         PointCloudLOD* current = bucket.lods;
@@ -299,31 +299,31 @@ static bool rebuild_cave_opengl_data()
         }
     }
 
-    g_project_data.buckets.clear();
+    _project_data.buckets.clear();
 
-    g_project_data.intensity_min = g_project_data.cave_vertices.front().intensity;
-    g_project_data.intensity_max = g_project_data.intensity_min;
+    _project_data.intensity_min = _project_data.cave_vertices.front().intensity;
+    _project_data.intensity_max = _project_data.intensity_min;
 
-    g_project_data.cave_aabb.min = g_project_data.cave_vertices.front().position;
-    g_project_data.cave_aabb.max = g_project_data.cave_aabb.min;
+    _project_data.cave_aabb.min = _project_data.cave_vertices.front().position;
+    _project_data.cave_aabb.max = _project_data.cave_aabb.min;
 
-    for (const auto& p : g_project_data.cave_vertices)
+    for (const auto& p : _project_data.cave_vertices)
     {
-        g_project_data.intensity_min = std::min(g_project_data.intensity_min, p.intensity);
-        g_project_data.intensity_max = std::max(g_project_data.intensity_max, p.intensity);
+        _project_data.intensity_min = std::min(_project_data.intensity_min, p.intensity);
+        _project_data.intensity_max = std::max(_project_data.intensity_max, p.intensity);
 
-        g_project_data.cave_aabb.min = glm::min(g_project_data.cave_aabb.min, p.position);
-        g_project_data.cave_aabb.max = glm::max(g_project_data.cave_aabb.max, p.position);
+        _project_data.cave_aabb.min = glm::min(_project_data.cave_aabb.min, p.position);
+        _project_data.cave_aabb.max = glm::max(_project_data.cave_aabb.max, p.position);
     }
 
-    bucketize_point_cloud(g_project_data.cave_vertices, g_project_data.buckets,
-                          user_settings.io.map_load_extent,
-                          user_settings.io.map_load_decimation_factor,
-                          user_settings.io.map_load_decimation_levels,
-                          user_settings.io.map_load_minimum_first_level_points,
-                          user_settings.io.map_load_use_center_extent);
+    bucketize_point_cloud(_project_data.cave_vertices, _project_data.buckets,
+                          _user_settings.io.map_load_extent,
+                          _user_settings.io.map_load_decimation_factor,
+                          _user_settings.io.map_load_decimation_levels,
+                          _user_settings.io.map_load_minimum_first_level_points,
+                          _user_settings.io.map_load_use_center_extent);
 
-    for (auto& [ID, bucket] : g_project_data.buckets)
+    for (auto& [ID, bucket] : _project_data.buckets)
     {
         PointCloudLOD* current   = bucket.lods;
         int            lod_level = 0;
@@ -376,7 +376,7 @@ static bool rebuild_cave_opengl_data()
         bucket.bbox_vao = new VertexArray(bucket.bbox_vbo, false, nullptr, false, layout_point); //
     }
 
-    for (auto& [ID, bucket] : g_project_data.buckets)
+    for (auto& [ID, bucket] : _project_data.buckets)
     {
         size_t bucket_lod_count = 0;
         for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
@@ -384,12 +384,12 @@ static bool rebuild_cave_opengl_data()
             ++bucket_lod_count;
         }
 
-        g_project_data.max_lod_count = std::max(g_project_data.max_lod_count, bucket_lod_count);
+        _project_data.max_lod_count = std::max(_project_data.max_lod_count, bucket_lod_count);
     }
 
-    if (g_project_data.buckets.empty())
+    if (_project_data.buckets.empty())
     {
-        spdlog::error("Bucketization produced no buckets from {} cave points", g_project_data.cave_vertices.size());
+        spdlog::error("Bucketization produced no buckets from {} cave points", _project_data.cave_vertices.size());
         return false;
     }
 
@@ -402,7 +402,7 @@ static inline void load_trajectory()
 
     if (PFDOpenFile("Open CSV file", "CSV Files (.csv)", "*.csv", filename))
     {
-        if (!load_trajectory_csv(filename, g_project_data.trajectory_positions, g_project_data.trajectory_orientations_mat33, user_settings.io.trajectory_load_every_nth))
+        if (!load_trajectory_csv(filename, _project_data.trajectory_positions, _project_data.trajectory_orientations_mat33, _user_settings.io.trajectory_load_every_nth))
         {
             spdlog::error("Failed to load trajectory CSV : {}", filename);
             return;
@@ -414,8 +414,86 @@ static inline void load_trajectory()
             return;
         }
 
-        g_project_data.trajectory_path = filename;
+        _project_data.trajectory_path = filename;
     }
+}
+
+// Move trajectory index by +- given amount of meters along the trajectory (if possible)
+static void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uint32_t& index, const float amount)
+{
+    if (trajectory.empty())
+    {
+        spdlog::warn("Refusing to move trajectory index : no trajectory loaded");
+        return;
+    }
+
+    const size_t last = trajectory.size() - 1;
+
+    if (amount == 0.0f)
+    {
+        return;
+    }
+
+    if (index > last)
+    {
+        index = static_cast<uint32_t>(last);
+    }
+
+    const uint32_t previous_index = index;
+
+    const glm::vec3 start_position = trajectory[index].position;
+
+    float walked = 0.0f;
+
+    if (amount >= 0.0f)
+    {
+        // Walk forward accumulating distance
+        size_t i = index;
+        while (i < last)
+        {
+            const float segment = glm::length(trajectory[i + 1].position - trajectory[i].position);
+            walked += segment;
+            ++i;
+
+            if (walked >= amount)
+            {
+                break;
+            }
+        }
+
+        if (walked < amount)
+        {
+            spdlog::debug("Requested {:.2f} m forward exceeds trajectory length : clamped to end", amount);
+        }
+
+        index = static_cast<uint32_t>(i);
+    }
+    else
+    {
+        // Walk backward accumulating distance
+        const float target = -amount;
+        size_t      i      = index;
+        while (i > 0)
+        {
+            const float segment = glm::length(trajectory[i].position - trajectory[i - 1].position);
+            walked += segment;
+            --i;
+
+            if (walked >= target)
+            {
+                break;
+            }
+        }
+
+        if (walked < target)
+        {
+            spdlog::debug("Requested {:.2f} m backward exceeds trajectory length : clamped to start", target);
+        }
+
+        index = static_cast<uint32_t>(i);
+    }
+
+    spdlog::debug("Moved trajectory index from [{}] to [{}] by requested {:.2f} m (actual {:.2f} m)", previous_index, index, amount, glm::length(trajectory[index].position - start_position));
 }
 
 static inline void load_object()
@@ -424,7 +502,7 @@ static inline void load_object()
 
     if (PFDOpenFile("Open PLY file", "PLY Files (.ply)", "*.ply", filename))
     {
-        if (!load_stretcher_ply(filename, g_project_data.stretcher_vertices, g_project_data.stretcher_indices))
+        if (!load_stretcher_ply(filename, _project_data.stretcher_vertices, _project_data.stretcher_indices))
         {
             spdlog::error("Failed to load stretcher PLY : {}", filename);
             return;
@@ -436,7 +514,7 @@ static inline void load_object()
             return;
         }
 
-        g_project_data.object_path = filename;
+        _project_data.object_path = filename;
     }
 }
 
@@ -446,7 +524,7 @@ static inline void load_environment()
 
     if (PFDOpenFile("Open LAZ file", "LAZ Files (*.laz *.las)", "*.laz *.las", filename))
     {
-        if (!load_cave_laz(filename, g_project_data.cave_vertices))
+        if (!load_cave_laz(filename, _project_data.cave_vertices))
         {
             spdlog::error("Failed to load environment LAZ : {}", filename);
             return;
@@ -458,7 +536,7 @@ static inline void load_environment()
             return;
         }
 
-        g_project_data.environment_path = filename;
+        _project_data.environment_path = filename;
     }
 }
 
@@ -584,7 +662,7 @@ int main()
 
         glViewport(0, 0, width, height);
 
-        glClearColor(user_settings.opengl.clear_color.x, user_settings.opengl.clear_color.y, user_settings.opengl.clear_color.z, 1.0f);
+        glClearColor(_user_settings.opengl.clear_color.x, _user_settings.opengl.clear_color.y, _user_settings.opengl.clear_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         ImGui_ImplOpenGL3_NewFrame();
@@ -734,7 +812,7 @@ int main()
                         {
                             load_trajectory();
                         }
-                        ImGui::Text("%s", g_project_data.trajectory_path.empty() ? "(none)" : g_project_data.trajectory_path.c_str());
+                        ImGui::Text("%s", _project_data.trajectory_path.empty() ? "(none)" : _project_data.trajectory_path.c_str());
 
                         ImGui::Separator();
 
@@ -742,7 +820,7 @@ int main()
                         {
                             load_object();
                         }
-                        ImGui::Text("%s", g_project_data.object_path.empty() ? "(none)" : g_project_data.object_path.c_str());
+                        ImGui::Text("%s", _project_data.object_path.empty() ? "(none)" : _project_data.object_path.c_str());
 
                         ImGui::Separator();
 
@@ -750,7 +828,7 @@ int main()
                         {
                             load_environment();
                         }
-                        ImGui::Text("%s", g_project_data.environment_path.empty() ? "(none)" : g_project_data.environment_path.c_str());
+                        ImGui::Text("%s", _project_data.environment_path.empty() ? "(none)" : _project_data.environment_path.c_str());
 
                         ImGui::TreePop();
                     }
@@ -760,7 +838,7 @@ int main()
                     {
                         ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
 
-                        const int32_t max_lod_index = g_project_data.max_lod_count > 0 ? static_cast<int32_t>(g_project_data.max_lod_count - 1) : 0;
+                        const int32_t max_lod_index = _project_data.max_lod_count > 0 ? static_cast<int32_t>(_project_data.max_lod_count - 1) : 0;
                         ImGui::BeginDisabled(!g_use_fixed_lod);
                         ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
                         ImGui::EndDisabled();
@@ -770,15 +848,46 @@ int main()
                     ImGui::Separator();
                     if (ImGui::TreeNode("Trajectory"))
                     {
-                        if (g_project_data.trajectory_orientations_mat33.size())
+                        if (_project_data.trajectory_orientations_mat33.size())
                         {
                             const uint32_t zero                  = 0U;
-                            const uint32_t max_orientation_index = static_cast<uint32_t>(g_project_data.trajectory_orientations_mat33.size()) - 1U;
+                            const uint32_t max_orientation_index = static_cast<uint32_t>(_project_data.trajectory_orientations_mat33.size()) - 1U;
 
                             ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), max_orientation_index, static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
                             ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
                             ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
                             ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
+
+                            // Trajectory traversal buttons : move +- given meters along the trajectory
+                            if (ImGui::Button("- 1 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -1.0f);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("- 5 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -5.0f);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("- 10 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -10.0f);
+                            }
+
+                            if (ImGui::Button("+ 1 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +1.0f);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("+ 5 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +5.0f);
+                            }
+                            ImGui::SameLine();
+                            if (ImGui::Button("+ 10 m"))
+                            {
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +10.0f);
+                            }
                         }
                         else
                         {
@@ -795,9 +904,9 @@ int main()
                     ImGui::SameLine();
                     if (ImGui::Button("Snap"))
                     {
-                        if (g_project_data.trajectory_positions.size())
+                        if (_project_data.trajectory_positions.size())
                         {
-                            snap_camera_target_to_trajectory(ctx.cameras[0], g_project_data.trajectory_positions[g_trajectory_index].position);
+                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
                         }
                     }
                     if (g_lock_viewport0_target_to_trajectory)
@@ -810,21 +919,21 @@ int main()
 
             if (_gui_state.display_user_settings_tab)
             {
-                UserSettingsImGUI(user_settings, _gui_state.display_user_settings_tab);
+                UserSettingsImGUI(_user_settings, _gui_state.display_user_settings_tab);
             }
 
             if (_gui_state.display_debug_tab)
             {
-                DebugImGUI(g_project_data.buckets, _gui_state.display_debug_tab);
+                DebugImGUI(_project_data.buckets, _gui_state.display_debug_tab);
             }
         }
 
         glm::vec3 stretcher_position    = glm::vec3(0.0f);
         glm::mat3 stretcher_orientation = glm::mat3(1.0f);
 
-        if (g_trajectory_index_auto_play && !g_project_data.trajectory_orientations_mat33.empty())
+        if (g_trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
         {
-            const size_t last = g_project_data.trajectory_orientations_mat33.size() - 1;
+            const size_t last = _project_data.trajectory_orientations_mat33.size() - 1;
 
             if (g_trajectory_index + g_trajectory_index_auto_play_increment >= last)
             {
@@ -837,10 +946,10 @@ int main()
             }
         }
 
-        if (g_project_data.trajectory_positions.size() && g_project_data.trajectory_orientations_mat33.size())
+        if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
         {
-            const auto& trajectory_point      = g_project_data.trajectory_positions[g_trajectory_index];
-            const auto& trajectoryorientation = g_project_data.trajectory_orientations_mat33[g_trajectory_index];
+            const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
+            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
 
             stretcher_position    = trajectory_point.position;
             stretcher_orientation = trajectoryorientation.orientation;
@@ -848,18 +957,18 @@ int main()
 
         glm::mat4 stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
 
-        const OBB  stretcher_obb               = aabb_to_obb(g_project_data.stretcher_aabb, stretcher_pose);
-        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(g_project_data.buckets, stretcher_obb, user_settings.collision.radious);
+        const OBB  stretcher_obb               = aabb_to_obb(_project_data.stretcher_aabb, stretcher_pose);
+        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(_project_data.buckets, stretcher_obb, _user_settings.collision.radious);
 
-        if (g_modify_current_pose_with_gizmo)
+        if (g_modify_current_pose_with_gizmo || glfwGetKey(window, GLFW_KEY_G))
         {
             glm::vec3 stretcher_position    = glm::vec3(0.0f);
             glm::mat3 stretcher_orientation = glm::mat3(1.0f);
 
-            if (g_project_data.trajectory_positions.size() && g_project_data.trajectory_orientations_mat33.size())
+            if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                const auto& trajectory_point      = g_project_data.trajectory_positions[g_trajectory_index];
-                const auto& trajectoryorientation = g_project_data.trajectory_orientations_mat33[g_trajectory_index];
+                const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
+                const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
 
                 stretcher_position    = trajectory_point.position;
                 stretcher_orientation = trajectoryorientation.orientation;
@@ -905,12 +1014,12 @@ int main()
             glm::vec3 position = glm::vec3(modified[3]);
             glm::mat3 rotation = glm::mat3(modified);
 
-            if (g_project_data.trajectory_positions.size() && g_project_data.trajectory_orientations_mat33.size())
+            if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                g_project_data.trajectory_positions[g_trajectory_index].position             = position;
-                g_project_data.trajectory_orientations_mat33[g_trajectory_index].orientation = rotation;
+                _project_data.trajectory_positions[g_trajectory_index].position             = position;
+                _project_data.trajectory_orientations_mat33[g_trajectory_index].orientation = rotation;
 
-                glNamedBufferSubData(g_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * g_trajectory_index, sizeof(glm::vec3), &g_project_data.trajectory_positions[g_trajectory_index].position);
+                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * g_trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[g_trajectory_index].position);
             }
         }
         // VIEWPORT DIVIDER LINES
@@ -988,7 +1097,7 @@ int main()
 
                     const float PICK_RADIUS = 0.1f;
 
-                    for (auto& [ID, bucket] : g_project_data.buckets)
+                    for (auto& [ID, bucket] : _project_data.buckets)
                     {
                         glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
                         glm::vec3 to_center = center - camera_pos;
@@ -1063,82 +1172,82 @@ int main()
             compute_camera_frustum_planes(view, projection, frustum);
 
             // ORIGIN
-            if (user_settings.origin.draw_enable)
+            if (_user_settings.origin.draw_enable)
             {
-                glLineWidth(user_settings.origin.width);
+                glLineWidth(_user_settings.origin.width);
                 origin_program->Bind();
                 origin_program->PushUniform16F32("u_MVP", MVP);
-                origin_program->PushUniform1F32("u_Scale", user_settings.origin.scale);
+                origin_program->PushUniform1F32("u_Scale", _user_settings.origin.scale);
                 origin_vao->Bind();
                 origin_vao->DrawArray(GL_LINES, 6);
                 glLineWidth(1.0f);
             }
 
             // CAMERA_TARGET
-            if (user_settings.target.draw_enable)
+            if (_user_settings.target.draw_enable)
             {
-                glLineWidth(user_settings.target.width);
+                glLineWidth(_user_settings.target.width);
                 camera_target_program->Bind();
                 camera_target_program->PushUniform16F32("u_MVP", MVP);
                 camera_target_program->PushUniform3F32("u_Translation", cam.target);
-                camera_target_program->PushUniform1F32("u_Scale", user_settings.target.scale);
-                camera_target_program->PushUniform3F32("u_Color", user_settings.target.color);
+                camera_target_program->PushUniform1F32("u_Scale", _user_settings.target.scale);
+                camera_target_program->PushUniform3F32("u_Color", _user_settings.target.color);
                 target_vao->Bind();
                 target_vao->DrawArray(GL_LINES, 6);
                 glLineWidth(1.0f);
             }
 
             // TRAJECTORY
-            if (user_settings.trajectory.draw_enable && (g_project_data.trajectory_positions.size() && g_project_data.trajectory_orientations_mat33.size()))
+            if (_user_settings.trajectory.draw_enable && (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size()))
             {
-                glLineWidth(user_settings.trajectory.width);
+                glLineWidth(_user_settings.trajectory.width);
                 trajectory_program->Bind();
                 trajectory_program->PushUniform16F32("u_MVP", MVP);
-                trajectory_program->PushUniform3F32("u_Color", user_settings.trajectory.color);
-                g_project_data.trajectory_positions_vao->Bind();
-                g_project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, g_project_data.trajectory_positions.size());
+                trajectory_program->PushUniform3F32("u_Color", _user_settings.trajectory.color);
+                _project_data.trajectory_positions_vao->Bind();
+                _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
                 glLineWidth(1.0f);
             }
 
             //  STRETCHER
-            if (user_settings.stretcher.draw_enable && (g_project_data.stretcher_vertices.size() && g_project_data.stretcher_indices.size()))
+            if (_user_settings.stretcher.draw_enable && (_project_data.stretcher_vertices.size() && _project_data.stretcher_indices.size()))
             {
                 stretcher_program->Bind();
                 stretcher_program->PushUniform16F32("u_MVP", MVP);
                 stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
 
-                g_project_data.stretcher_vao->Bind();
-                g_project_data.stretcher_vao->DrawElements(GL_TRIANGLES, g_project_data.stretcher_indices.size(), 1, 0);
+                _project_data.stretcher_vao->Bind();
+                _project_data.stretcher_vao->DrawElements(GL_TRIANGLES, _project_data.stretcher_indices.size(), 1, 0);
             }
 
             //  STRETCHER BBOX
-            if (user_settings.stretcher.draw_enable_bbox && (g_project_data.stretcher_vertices.size() && g_project_data.stretcher_indices.size()))
+            if (_user_settings.stretcher.draw_enable_bbox && (_project_data.stretcher_vertices.size() && _project_data.stretcher_indices.size()))
             {
-                glLineWidth(user_settings.stretcher.bbox_width);
+                glLineWidth(_user_settings.stretcher.bbox_width);
 
                 bounding_box_stretcher_program->Bind();
                 bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
-                bounding_box_stretcher_program->PushUniform3F32("u_Color", user_settings.stretcher.bbox_color);
+                bounding_box_stretcher_program->PushUniform3F32("u_Color", _user_settings.stretcher.bbox_color);
                 bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
-                g_project_data.stretcher_aabb_vao->Bind();
-                g_project_data.stretcher_aabb_vao->DrawArray(GL_LINES, 24);
+                _project_data.stretcher_aabb_vao->Bind();
+                _project_data.stretcher_aabb_vao->DrawArray(GL_LINES, 24);
                 glLineWidth(1.0f);
             }
 
-            const bool draw_any_cave_lod = user_settings.point_cloud.draw_enable_pc_out ||
-                                           user_settings.point_cloud.draw_enable_pc_in_obb ||
-                                           user_settings.point_cloud.draw_enable_pc_in_obb_proximity;
+            const bool draw_any_cave_lod = _user_settings.point_cloud.draw_enable_pc_out ||
+                                           _user_settings.point_cloud.draw_enable_pc_in_obb ||
+                                           _user_settings.point_cloud.draw_enable_pc_in_obb_proximity;
 
             // POINT_CLOUD
-            if (user_settings.point_cloud.draw_enable_pc && g_project_data.buckets.size() && draw_any_cave_lod)
+            if (_user_settings.point_cloud.draw_enable_pc && _project_data.buckets.size() && draw_any_cave_lod)
             {
                 glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
 
-                glPointSize(user_settings.point_cloud.point_size);
+                glPointSize(_user_settings.point_cloud.point_size);
 
-                const bool use_color_map    = user_settings.point_cloud.display_mode != PointCloudDisplayMode::Intensity;
-                const bool use_position_map = user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPosition ||
-                                              user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity;
+                const bool use_color_map    = _user_settings.point_cloud.display_mode != PointCloudDisplayMode::Intensity;
+                const bool use_position_map = _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPosition ||
+                                              _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity;
 
                 Program* active_point_cloud_program = use_color_map ? point_cloud_color_map_program : point_cloud_program;
                 active_point_cloud_program->Bind();
@@ -1146,19 +1255,19 @@ int main()
 
                 if (use_color_map)
                 {
-                    active_point_cloud_program->PushUniform1F32("u_IntensityMin", g_project_data.intensity_min);
-                    active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (g_project_data.intensity_max > g_project_data.intensity_min) ? 1.0f / (g_project_data.intensity_max - g_project_data.intensity_min) : 1.0f);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityMin", _project_data.intensity_min);
+                    active_point_cloud_program->PushUniform1F32("u_IntensityInvRange", (_project_data.intensity_max > _project_data.intensity_min) ? 1.0f / (_project_data.intensity_max - _project_data.intensity_min) : 1.0f);
                     active_point_cloud_program->PushUniform1F32("u_UsePosition", use_position_map ? 1.0f : 0.0f);
-                    active_point_cloud_program->PushUniform3F32("u_PositionMin", g_project_data.cave_aabb.min);
-                    const glm::vec3 position_extent = glm::max(g_project_data.cave_aabb.max - g_project_data.cave_aabb.min, glm::vec3(1e-6f));
+                    active_point_cloud_program->PushUniform3F32("u_PositionMin", _project_data.cave_aabb.min);
+                    const glm::vec3 position_extent = glm::max(_project_data.cave_aabb.max - _project_data.cave_aabb.min, glm::vec3(1e-6f));
                     active_point_cloud_program->PushUniform3F32("u_PositionInvRange", 1.0f / position_extent);
-                    active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
-                                                                                               user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity
+                    active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
+                                                                                               _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity
                                                                                            ? 1.0f
                                                                                            : 0.0f);
                 }
 
-                for (auto& [ID, bucket] : g_project_data.buckets)
+                for (auto& [ID, bucket] : _project_data.buckets)
                 {
                     if (!bucket.draw || !bucket.lods)
                     {
@@ -1185,21 +1294,21 @@ int main()
                     const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
                     const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
 
-                    if (is_in_obb && user_settings.point_cloud.draw_enable_pc_in_obb)
+                    if (is_in_obb && _user_settings.point_cloud.draw_enable_pc_in_obb)
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
                         continue;
                     }
 
-                    if (is_on_obb_proximity && user_settings.point_cloud.draw_enable_pc_in_obb_proximity)
+                    if (is_on_obb_proximity && _user_settings.point_cloud.draw_enable_pc_in_obb_proximity)
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
                         continue;
                     }
 
-                    if (user_settings.point_cloud.draw_enable_pc_out && !(is_in_obb || is_on_obb_proximity))
+                    if (_user_settings.point_cloud.draw_enable_pc_out && !(is_in_obb || is_on_obb_proximity))
                     {
                         lod->vao->Bind();
                         lod->vao->DrawArray(GL_POINTS, lod->points.size());
@@ -1210,19 +1319,19 @@ int main()
                 glPointSize(1.0f);
             }
 
-            const bool draw_any_cave_boxes = user_settings.point_cloud.draw_enable_bbox_out ||
-                                             user_settings.point_cloud.draw_enable_bbox_in_obb ||
-                                             user_settings.point_cloud.draw_enable_bbox_in_obb_proximity;
+            const bool draw_any_cave_boxes = _user_settings.point_cloud.draw_enable_bbox_out ||
+                                             _user_settings.point_cloud.draw_enable_bbox_in_obb ||
+                                             _user_settings.point_cloud.draw_enable_bbox_in_obb_proximity;
 
             // POINT CLOUD BOXES
-            if (user_settings.point_cloud.draw_enable_bbox && g_project_data.buckets.size() && (draw_any_cave_boxes))
+            if (_user_settings.point_cloud.draw_enable_bbox && _project_data.buckets.size() && (draw_any_cave_boxes))
             {
                 glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
 
                 bounding_box_program->Bind();
                 bounding_box_program->PushUniform16F32("u_MVP", MVP);
 
-                for (auto& [ID, bucket] : g_project_data.buckets)
+                for (auto& [ID, bucket] : _project_data.buckets)
                 {
                     if (!record_in_camera_frustum(bucket, frustum))
                     {
@@ -1232,9 +1341,9 @@ int main()
                     const bool is_in_obb           = std::ranges::contains(in_obb_ids_in_obb_proximity.first, ID);
                     const bool is_on_obb_proximity = std::ranges::contains(in_obb_ids_in_obb_proximity.second, ID);
 
-                    if (is_in_obb && user_settings.point_cloud.draw_enable_bbox_in_obb)
+                    if (is_in_obb && _user_settings.point_cloud.draw_enable_bbox_in_obb)
                     {
-                        glLineWidth(user_settings.point_cloud.bbox_width_in_obb);
+                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb);
                         glm::vec3 red(1.0f, 0.0f, 0.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", red);
@@ -1246,9 +1355,9 @@ int main()
 
                         continue;
                     }
-                    else if (is_on_obb_proximity && user_settings.point_cloud.draw_enable_bbox_in_obb_proximity)
+                    else if (is_on_obb_proximity && _user_settings.point_cloud.draw_enable_bbox_in_obb_proximity)
                     {
-                        glLineWidth(user_settings.point_cloud.bbox_width_in_obb_proximity);
+                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb_proximity);
                         glm::vec3 blue(0.0f, 0.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", blue);
@@ -1260,9 +1369,9 @@ int main()
 
                         continue;
                     }
-                    else if (user_settings.point_cloud.draw_enable_bbox_out && !(is_in_obb || is_on_obb_proximity))
+                    else if (_user_settings.point_cloud.draw_enable_bbox_out && !(is_in_obb || is_on_obb_proximity))
                     {
-                        glLineWidth(user_settings.point_cloud.bbox_width);
+                        glLineWidth(_user_settings.point_cloud.bbox_width);
                         glm::vec3 white(1.0f, 1.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", white);
@@ -1280,9 +1389,9 @@ int main()
 
         const int count = static_cast<int>(ctx.active_count);
 
-        if (g_lock_viewport0_target_to_trajectory && g_project_data.trajectory_positions.size())
+        if (g_lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
         {
-            snap_camera_target_to_trajectory(ctx.cameras[0], g_project_data.trajectory_positions[g_trajectory_index].position);
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
         }
 
         for (int i = 0; i < count; ++i)
