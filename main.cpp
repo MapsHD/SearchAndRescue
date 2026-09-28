@@ -758,7 +758,7 @@ int main()
                     }
 
                     ImGui::Separator();
-                    if (ImGui::TreeNode("Trrajectory"))
+                    if (ImGui::TreeNode("Trajectory"))
                     {
                         if (g_trajectory_orientations_mat33.size())
                         {

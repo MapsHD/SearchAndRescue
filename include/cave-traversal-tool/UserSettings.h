@@ -18,7 +18,7 @@ struct UserSettings
 {
     struct
     {
-        glm::vec3 clear_color = {0.2f, 0.2f, 0.2f};
+        glm::vec3 clear_color = {0.5f, 0.5f, 0.5f};
     } opengl;
 
     struct
@@ -79,7 +79,7 @@ struct UserSettings
         bool draw_enable_pc_in_obb           = true;
         bool draw_enable_pc_in_obb_proximity = true;
 
-        PointCloudDisplayMode display_mode = PointCloudDisplayMode::Intensity;
+        PointCloudDisplayMode display_mode = PointCloudDisplayMode::ColorMap;
 
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
