@@ -42,6 +42,24 @@
 
 #include <ImGuizmo.h>
 
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MAJOR
+#define CAVE_TRAVERSAL_TOOL_VERSION_MAJOR 0
+#endif
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MINOR
+#define CAVE_TRAVERSAL_TOOL_VERSION_MINOR 0
+#endif
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_PATCH
+#define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
+#endif
+
+static constexpr const char* WINDOW_TITLE = "cave-traversal-tool v";
+
+// Stringify version defines into a single "X.Y.Z" string
+#define CTT_STR2(x) #x
+#define CTT_STR(x)  CTT_STR2(x)
+static const std::string WINDOW_VERSION_STRING =
+    CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MAJOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MINOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_PATCH);
+
 struct GuiState
 {
     bool display_project_tab       = true;
@@ -651,7 +669,7 @@ int main()
 
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "cave-traversal-tool-application", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(800, 600, (std::string(WINDOW_TITLE) + WINDOW_VERSION_STRING).c_str(), nullptr, nullptr);
 
     glfwSetCursorPosCallback(window, cursor_position_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
