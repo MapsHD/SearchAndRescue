@@ -864,7 +864,7 @@ int main()
                             const uint32_t zero                  = 0U;
                             const uint32_t max_orientation_index = static_cast<uint32_t>(_project_data.trajectory_orientations_mat33.size()) - 1U;
 
-                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), max_orientation_index, static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
+                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
                             ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
                             ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
                             ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
