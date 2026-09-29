@@ -80,5 +80,5 @@ Please describe anything that would make the software more useful, faster, easie
 
 10. Would you consider using this software in your work? Why or why not?
 
-10. What price range would you consider acceptable for a device capable of running this software effectively?
+11. What price range would you consider acceptable for a device capable of running this software effectively?
 Please answer in your local currency. Consider the total purchase price of the computer.
