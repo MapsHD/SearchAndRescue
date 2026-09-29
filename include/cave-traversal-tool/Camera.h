@@ -71,6 +71,13 @@ struct MultiViewContext
 
     float view_axis_distance[MAX_CAMERAS]{5.0f, 5.0f, 5.0f, 5.0f};
 
+    // Per-viewport plane control mode (locked-axis cameras only)
+    // true  : symmetric  - one slider controls camera distance from the stretcher pose,
+    //         near/far planes are derived as distance -+ symmetric_plane_offset
+    // false : asymmetric - near/far planes controlled independently (as before)
+    bool  symmetric_planes[MAX_CAMERAS]{true, true, true, true};
+    float symmetric_plane_offset[MAX_CAMERAS]{1.25f, 1.25f, 1.25f, 1.25f};
+
     ViewportCount active_count{ViewportCount::ONE};
     int           window_width{800};
     int           window_height{600};

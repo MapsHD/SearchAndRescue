@@ -87,7 +87,7 @@ struct ProjectData
     Buffer*      trajectory_positions_vbo = nullptr;
     VertexArray* trajectory_positions_vao = nullptr;
 
-    // TODO (m.wlasiuk) : limit based on point cloud statistics (8 * max points in LOD_0 accross PC ... ???) 
+    // TODO (m.wlasiuk) : limit based on point cloud statistics (8 * max points in LOD_0 accross PC ... ???)
     // GPU side data : collision points between stretcher OBB and point cloud (positions only, color as uniform)
     static constexpr size_t COLLISION_POINTS_CAPACITY = 1024 * 16;
 
@@ -106,9 +106,6 @@ static int32_t g_fixed_lod_index = 0;
 static bool     g_trajectory_index_auto_play           = false;
 static int32_t  g_trajectory_index_auto_play_increment = 1;
 static uint32_t g_trajectory_index                     = 0;
-
-// gizmo
-static bool g_modify_current_pose_with_gizmo = false;
 
 // lock viewport 0 camera target to current trajectory pose
 static bool g_lock_viewport0_target_to_trajectory = false;
@@ -770,8 +767,16 @@ int main()
                                 ctx.camera_modes[i] = static_cast<CameraMode>(mode);
                                 if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
                                 {
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                                    if (ctx.symmetric_planes[i])
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                                    }
+                                    else
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                                    }
                                 }
                                 else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
                                 {
@@ -785,30 +790,66 @@ int main()
 
                             if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
                             {
-                                float old_dist = ctx.view_axis_distance[i];
-                                if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                                // Plane control mode : symmetric (single slider, planes derived from distance) vs asymmetric (independent planes)
+                                const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
+                                int         plane_mode         = ctx.symmetric_planes[i] ? 0 : 1;
+                                if (ImGui::Combo(("plane_mode##" + std::to_string(i)).c_str(), &plane_mode, plane_mode_names, 2))
                                 {
-                                    float delta               = ctx.view_axis_distance[i] - old_dist;
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
-                                    ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                                    ctx.symmetric_planes[i] = (plane_mode == 0);
+
+                                    if (ctx.symmetric_planes[i])
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                                    }
                                 }
 
-                                ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                                ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+                                if (ctx.symmetric_planes[i])
+                                {
+                                    // Symmetrical : single slider controls camera distance from the stretcher pose,
+                                    // planes are enforced each frame as distance -+ symmetric_plane_offset
+                                    ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
 
-                                if (ctx.cameras[i].near_plane < 0.01f)
-                                {
-                                    ctx.cameras[i].near_plane = 0.01f;
-                                }
-                                if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                                {
-                                    ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                                }
+                                    // ImGui::BeginDisabled(true);
+                                    // ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
+                                    // ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
+                                    // ImGui::EndDisabled();
 
-                                if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
+                                    ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f");
+
+                                    if (ImGui::Button(("Reset offset (1.25m)##" + std::to_string(i)).c_str()))
+                                    {
+                                        ctx.symmetric_plane_offset[i] = 1.25f;
+                                    }
+                                }
+                                else
                                 {
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
-                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
+                                    // Asymmetrical : independent distance / near / far control (previous behaviour)
+                                    float old_dist = ctx.view_axis_distance[i];
+                                    if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                                    {
+                                        float delta               = ctx.view_axis_distance[i] - old_dist;
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
+                                        ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                                    }
+
+                                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
+                                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+
+                                    if (ctx.cameras[i].near_plane < 0.01f)
+                                    {
+                                        ctx.cameras[i].near_plane = 0.01f;
+                                    }
+                                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
+                                    {
+                                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
+                                    }
+
+                                    if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
+                                    }
                                 }
                             }
                         }
@@ -907,8 +948,6 @@ int main()
 
                         ImGui::TreePop();
                     }
-
-                    ImGui::Checkbox("g_modify_current_pose_with_gizmo", &g_modify_current_pose_with_gizmo);
 
                     ImGui::Separator();
                     ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
@@ -1021,7 +1060,7 @@ int main()
             }
         }
 
-        if (g_modify_current_pose_with_gizmo || glfwGetKey(window, GLFW_KEY_G))
+        if (glfwGetKey(window, GLFW_KEY_G))
         {
             glm::vec3 stretcher_position    = glm::vec3(0.0f);
             glm::mat3 stretcher_orientation = glm::mat3(1.0f);
@@ -1528,6 +1567,13 @@ int main()
             if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
             {
                 update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
+
+                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                if (ctx.symmetric_planes[i])
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
             }
             else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
             {
