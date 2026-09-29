@@ -8,7 +8,6 @@
 #include <sstream>
 #include <vector>
 
-
 // clang-format off
 #include <spdlog/spdlog.h>
 #include <glad/glad.h>
@@ -113,22 +112,23 @@ struct ProjectData
 
     Buffer*      collision_points_vbo = nullptr;
     VertexArray* collision_points_vao = nullptr;
+
+    // Level of detail : fixed LOD index vs automatic LOD from distance
+    bool    use_fixed_lod   = true;
+    int32_t fixed_lod_index = 0;
+
+    // Trajectory playback state
+    bool     trajectory_index_auto_play           = false;
+    int32_t  trajectory_index_auto_play_increment = 1;
+    uint32_t trajectory_index                     = 0;
+
+    // Lock viewport 0 camera target to current trajectory pose
+    bool lock_viewport0_target_to_trajectory = false;
 };
 
 static GuiState     _gui_state     = {};
 static UserSettings _user_settings = {};
 static ProjectData  _project_data{};
-
-static bool    g_use_fixed_lod   = true;
-static int32_t g_fixed_lod_index = 0;
-
-//
-static bool     g_trajectory_index_auto_play           = false;
-static int32_t  g_trajectory_index_auto_play_increment = 1;
-static uint32_t g_trajectory_index                     = 0;
-
-// lock viewport 0 camera target to current trajectory pose
-static bool g_lock_viewport0_target_to_trajectory = false;
 
 static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
 {
@@ -153,7 +153,7 @@ static bool rebuild_trajectory_mat33_opengl_data()
         return false;
     }
 
-    g_trajectory_index = 0;
+    _project_data.trajectory_index = 0;
 
     if (_project_data.trajectory_positions_vao)
     {
@@ -982,11 +982,11 @@ int main()
                     ImGui::Separator();
                     if (ImGui::TreeNode("Level of Detail (LOD)"))
                     {
-                        ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
+                        ImGui::Checkbox("use_fixed_lod", &_project_data.use_fixed_lod);
 
                         const int32_t max_lod_index = _project_data.max_lod_count > 0 ? static_cast<int32_t>(_project_data.max_lod_count - 1) : 0;
-                        ImGui::BeginDisabled(!g_use_fixed_lod);
-                        ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
+                        ImGui::BeginDisabled(!_project_data.use_fixed_lod);
+                        ImGui::SliderInt("fixed_lod_index", &_project_data.fixed_lod_index, 0, max_lod_index);
                         ImGui::EndDisabled();
                         ImGui::TreePop();
                     }
@@ -999,40 +999,40 @@ int main()
                             const uint32_t zero                  = 0U;
                             const uint32_t max_orientation_index = static_cast<uint32_t>(_project_data.trajectory_orientations_mat33.size()) - 1U;
 
-                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
-                            ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
-                            ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
-                            ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
+                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(_project_data.trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(_project_data.trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
+                            ImGui::Checkbox("trajectory_index_auto_play", &_project_data.trajectory_index_auto_play);
+                            ImGui::DragInt("trajectory_index_auto_play_increment", &_project_data.trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
+                            ImGui::DragScalar("trajectory_index", ImGuiDataType_U32, &_project_data.trajectory_index, 1.0f, &zero, &max_orientation_index);
 
                             // Trajectory traversal buttons : move +- given meters along the trajectory
                             if (ImGui::Button("- 1 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -1.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -1.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("- 5 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -5.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -5.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("- 10 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -10.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -10.0f);
                             }
 
                             if (ImGui::Button("+ 1 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +1.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +1.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("+ 5 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +5.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +5.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("+ 10 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +10.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +10.0f);
                             }
                         }
                         else
@@ -1044,16 +1044,16 @@ int main()
                     }
 
                     ImGui::Separator();
-                    ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
+                    ImGui::Checkbox("Lock target to trajectory", &_project_data.lock_viewport0_target_to_trajectory);
                     ImGui::SameLine();
                     if (ImGui::Button("Snap"))
                     {
                         if (_project_data.trajectory_positions.size())
                         {
-                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
+                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
                         }
                     }
-                    if (g_lock_viewport0_target_to_trajectory)
+                    if (_project_data.lock_viewport0_target_to_trajectory)
                     {
                         ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
                     }
@@ -1075,25 +1075,25 @@ int main()
         glm::vec3 stretcher_position    = glm::vec3(0.0f);
         glm::mat3 stretcher_orientation = glm::mat3(1.0f);
 
-        if (g_trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
+        if (_project_data.trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
         {
             const size_t last = _project_data.trajectory_orientations_mat33.size() - 1;
 
-            if (g_trajectory_index + g_trajectory_index_auto_play_increment >= last)
+            if (_project_data.trajectory_index + _project_data.trajectory_index_auto_play_increment >= last)
             {
-                g_trajectory_index           = last;
-                g_trajectory_index_auto_play = false;
+                _project_data.trajectory_index           = last;
+                _project_data.trajectory_index_auto_play = false;
             }
             else
             {
-                g_trajectory_index += g_trajectory_index_auto_play_increment;
+                _project_data.trajectory_index += _project_data.trajectory_index_auto_play_increment;
             }
         }
 
         if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
         {
-            const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
-            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
+            const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
+            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[_project_data.trajectory_index];
 
             stretcher_position    = trajectory_point.position;
             stretcher_orientation = trajectoryorientation.orientation;
@@ -1161,8 +1161,8 @@ int main()
 
             if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
-                const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
+                const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
+                const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[_project_data.trajectory_index];
 
                 stretcher_position    = trajectory_point.position;
                 stretcher_orientation = trajectoryorientation.orientation;
@@ -1210,10 +1210,10 @@ int main()
 
             if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                _project_data.trajectory_positions[g_trajectory_index].position             = position;
-                _project_data.trajectory_orientations_mat33[g_trajectory_index].orientation = rotation;
+                _project_data.trajectory_positions[_project_data.trajectory_index].position             = position;
+                _project_data.trajectory_orientations_mat33[_project_data.trajectory_index].orientation = rotation;
 
-                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * g_trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[g_trajectory_index].position);
+                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
         }
         // VIEWPORT DIVIDER LINES
@@ -1326,7 +1326,7 @@ int main()
                         if (found)
                         {
                             spdlog::info("Trajectory pick in viewport {} : index = [{}] (distance to ray {:.3f} m)", pick_idx, best_index, best_dist);
-                            g_trajectory_index = best_index;
+                            _project_data.trajectory_index = best_index;
                         }
                         else
                         {
@@ -1545,7 +1545,7 @@ int main()
                         ++lod_count;
                     }
 
-                    size_t         lod_index = g_use_fixed_lod ? static_cast<size_t>(g_fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
+                    size_t         lod_index = _project_data.use_fixed_lod ? static_cast<size_t>(_project_data.fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
                     PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
 
                     if (!lod || !lod_in_camera_frustum(*lod, frustum))
@@ -1651,9 +1651,9 @@ int main()
 
         const int count = static_cast<int>(ctx.active_count);
 
-        if (g_lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
+        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
         {
-            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
         }
 
         for (int i = 0; i < count; ++i)
