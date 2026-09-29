@@ -1,0 +1,84 @@
+Purpose: This survey evaluates the usability and usefulness of software intended to support search-and-rescue operations. Your feedback will help identify practical use cases, usability issues, and improvements.
+
+1. What is your primary role or specialisation (select all that apply)?
+- Search-and-rescue team member
+- Team leader / coordinator
+- Incident commander
+- UAV / drone operator
+- GIS / mapping specialist
+- Mountain / wilderness rescue
+- Water / maritime rescue
+- Urban search and rescue
+- Medical / first responder
+- Fire and rescue
+- Law enforcement / public safety
+- Other:
+
+
+2. How frequently do you use digital maps, geospatial data, or visualisation software during search-and-rescue operations?
+- Never
+- Rarely
+- Occasionally
+- Frequently
+- Very frequently
+
+- 3. In which situations could data visualisation software be useful to you (select all that apply)?
+- Planning a search operation
+- Identifying and assigning search areas
+- Monitoring team locations
+- Monitoring UAV / drone operations
+- Analysing terrain or environmental data
+- Combining data from multiple sources
+- Tracking search progress
+- Reviewing / analysing an operation after it has ended
+- Coordinating multiple teams
+- Other:
+
+
+4. How useful would you find the software for supporting your work (select one that applies)?
+- Not useful at all
+- Slightly useful
+- Moderately useful
+- Very useful
+- Extremely useful
+
+5. How easy was the software to learn and use (select one that applies)?
+- Very difficult
+- Difficult
+- Neither easy nor difficult
+- Easy
+- Very easy
+
+6. How well does the software support the tasks you would normally perform during an operation?
+- Not at all
+- Slightly
+- Moderately
+- Well
+- Very well
+
+7. What problems or difficulties did you encounter while using the software (select all that apply)?
+- Difficult to understand the interface
+- Too much information displayed at once
+- Difficult to find the information I needed
+- Navigation / interaction was confusing
+- Visualisations were difficult to interpret
+- Performance was too slow
+- Data was difficult to import or use
+- Lack of required data or functionality
+- Lack of customisation
+- No significant problems
+- Other:
+
+
+8. Which information or visualisations would be most valuable to you during a real search-and-rescue operation?
+Please describe the data, maps, overlays, measurements, alerts, or other information you would like to see.
+
+
+9. What features or improvements would you most like to see in the software?
+Please describe anything that would make the software more useful, faster, easier to use, or better suited to your work.
+
+
+10. Would you consider using this software in your work? Why or why not?
+
+10. What price range would you consider acceptable for a device capable of running this software effectively?
+Please answer in your local currency. Consider the total purchase price of the computer.
