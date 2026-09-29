@@ -1,6 +1,25 @@
+// clang-format off
+#include <glad/glad.h>
+// clang-format on
+
 #include <cave-traversal-tool/Shaders.h>
 
+#include <cave-traversal-tool/OpenGL/Program.h>
+
 #include <cstring>
+
+Program* make_program(const ProgramShaderSources& sources)
+{
+    return new Program(
+        {ShaderDescriptor{
+             .shader_type = GL_VERTEX_SHADER,
+             .source_size = sources.vertex_source_size,
+             .source      = sources.vertex_source},
+         ShaderDescriptor{
+             .shader_type = GL_FRAGMENT_SHADER,
+             .source_size = sources.fragment_source_size,
+             .source      = sources.fragment_source}});
+}
 
 static constexpr const char* const kBoundingBoxStretcherVert = R"(
 #version 460 core

@@ -1,3 +1,4 @@
+﻿#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -17,10 +18,11 @@
 
 #include <cave-traversal-tool/Debug.h>
 #include <cave-traversal-tool/ErrorCallbacks.h>
-#include <cave-traversal-tool/FileIO.h>
+
 #include <cave-traversal-tool/PFDWrapper.h>
 
 #include <cave-traversal-tool/Camera.h>
+#include <cave-traversal-tool/Project.h>
 #include <cave-traversal-tool/Structures.h>
 
 #include <cave-traversal-tool/OpenGL/Buffer.h>
@@ -41,6 +43,24 @@
 
 #include <ImGuizmo.h>
 
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MAJOR
+    #define CAVE_TRAVERSAL_TOOL_VERSION_MAJOR 0
+#endif
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MINOR
+    #define CAVE_TRAVERSAL_TOOL_VERSION_MINOR 0
+#endif
+#ifndef CAVE_TRAVERSAL_TOOL_VERSION_PATCH
+    #define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
+#endif
+
+static constexpr const char* WINDOW_TITLE = "cave-traversal-tool v";
+
+// Stringify version defines into a single "X.Y.Z" string
+#define CTT_STR2(x) #x
+#define CTT_STR(x) CTT_STR2(x)
+static const std::string WINDOW_VERSION_STRING =
+    CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MAJOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MINOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_PATCH);
+
 struct GuiState
 {
     bool display_project_tab       = true;
@@ -48,70 +68,9 @@ struct GuiState
     bool display_debug_tab         = false;
 };
 
-// ProjectData instance : owns CPU and GPU side data for dataset and file paths
-struct ProjectData
-{
-    // File paths
-    std::string trajectory_path{};
-    std::string object_path{};
-    std::string environment_path{};
-
-    // CPU side data : dataset
-    std::vector<PointIntensity> cave_vertices{};
-    PointCloudBucket            buckets{};
-    size_t                      max_lod_count = 0;
-
-    AABB  cave_aabb     = {};
-    float intensity_min = 0.0f;
-    float intensity_max = 1.0f;
-
-    // CPU side data : stretcher (object)
-    std::vector<ColorPoint> stretcher_vertices{};
-    std::vector<uint32_t>   stretcher_indices{};
-    AABB                    stretcher_aabb{};
-
-    // CPU side data : trajectory
-    std::vector<Point>                          trajectory_positions{};
-    std::vector<TrajectoryPoseOrientationMat33> trajectory_orientations_mat33{};
-
-    // GPU side data : stretcher (object)
-    Buffer*      stretcher_vbo          = nullptr;
-    Buffer*      stretcher_index_buffer = nullptr;
-    VertexArray* stretcher_vao          = nullptr;
-
-    // GPU side data : stretcher AABB
-    Buffer*      stretcher_aabb_vbo = nullptr;
-    VertexArray* stretcher_aabb_vao = nullptr;
-
-    // GPU side data : trajectory
-    Buffer*      trajectory_positions_vbo = nullptr;
-    VertexArray* trajectory_positions_vao = nullptr;
-
-    // TODO (m.wlasiuk) : limit based on point cloud statistics (8 * max points in LOD_0 accross PC ... ???) 
-    // GPU side data : collision points between stretcher OBB and point cloud (positions only, color as uniform)
-    static constexpr size_t COLLISION_POINTS_CAPACITY = 1024 * 16;
-
-    Buffer*      collision_points_vbo = nullptr;
-    VertexArray* collision_points_vao = nullptr;
-};
-
 static GuiState     _gui_state     = {};
 static UserSettings _user_settings = {};
 static ProjectData  _project_data{};
-
-static bool    g_use_fixed_lod   = true;
-static int32_t g_fixed_lod_index = 0;
-
-//
-static bool     g_trajectory_index_auto_play           = false;
-static int32_t  g_trajectory_index_auto_play_increment = 1;
-static uint32_t g_trajectory_index                     = 0;
-
-// gizmo
-static bool g_modify_current_pose_with_gizmo = false;
-
-// lock viewport 0 camera target to current trajectory pose
-static bool g_lock_viewport0_target_to_trajectory = false;
 
 static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
 {
@@ -120,444 +79,47 @@ static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3
     cam.position           = pose_pos + offset;
 }
 
-template <typename T>
-static size_t std_vector_size(const std::vector<T>& vector)
+// GLFW drop callback : route each dropped file to the appropriate loader based on its extension
+static void drop_callback(GLFWwindow*, int count, const char** paths)
 {
-    return vector.size() * sizeof(T);
-}
-
-static bool rebuild_trajectory_mat33_opengl_data()
-{
-    const std::vector<VertexBufferAttributeLayout> layout_point = opengl_vertex_array_get_vertex_layout<Point>();
-
-    if (_project_data.trajectory_positions.empty() || _project_data.trajectory_orientations_mat33.empty())
+    for (int i = 0; i < count; ++i)
     {
-        spdlog::error("Refusing to rebuild trajectory OpenGL data : no trajectory points loaded");
-        return false;
-    }
+        std::filesystem::path path(paths[i]);
 
-    g_trajectory_index = 0;
-
-    if (_project_data.trajectory_positions_vao)
-    {
-        spdlog::debug("Deleting old trajectory positions VAO : {}", _project_data.trajectory_positions_vao->GetID());
-        delete _project_data.trajectory_positions_vao;
-    }
-
-    if (_project_data.trajectory_positions_vbo)
-    {
-        spdlog::debug("Deleting old trajectory positions VBO : {}", _project_data.trajectory_positions_vbo->GetID());
-        delete _project_data.trajectory_positions_vbo;
-    }
-
-    _project_data.trajectory_positions_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.trajectory_positions), _project_data.trajectory_positions.data());
-    _project_data.trajectory_positions_vao = new VertexArray(_project_data.trajectory_positions_vbo, false, nullptr, false, layout_point);
-
-    spdlog::debug("Created VAO [{}] and VBO [{}]", _project_data.trajectory_positions_vao->GetID(), _project_data.trajectory_positions_vbo->GetID());
-
-    return true;
-}
-
-static bool rebuild_stretcher_opengl_data()
-{
-    const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
-    const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
-
-    if (_project_data.stretcher_vertices.empty() || _project_data.stretcher_indices.empty())
-    {
-        spdlog::error("Refusing to rebuild stretcher OpenGL data : no stretcher data loaded");
-        return false;
-    }
-
-    if (_project_data.stretcher_aabb_vao)
-    {
-        spdlog::debug("Deleting old stretcher AABB positions VAO : {}", _project_data.stretcher_aabb_vao->GetID());
-        delete _project_data.stretcher_aabb_vao;
-    }
-
-    if (_project_data.stretcher_aabb_vbo)
-    {
-        spdlog::debug("Deleting old stretcher AABB positions VBO : {}", _project_data.stretcher_aabb_vbo->GetID());
-        delete _project_data.stretcher_aabb_vbo;
-    }
-
-    if (_project_data.stretcher_vao)
-    {
-        spdlog::debug("Deleting old stretcher positions VAO : {}", _project_data.stretcher_vao->GetID());
-        delete _project_data.stretcher_vao;
-    }
-
-    if (_project_data.stretcher_vbo)
-    {
-        spdlog::debug("Deleting old stretcher positions VBO : {}", _project_data.stretcher_vbo->GetID());
-        delete _project_data.stretcher_vbo;
-    }
-
-    if (_project_data.stretcher_index_buffer)
-    {
-        spdlog::debug("Deleting old stretcher index IBO : {}", _project_data.stretcher_index_buffer->GetID());
-        delete _project_data.stretcher_index_buffer;
-    }
-
-    _project_data.stretcher_aabb.min = _project_data.stretcher_vertices[0].position;
-    _project_data.stretcher_aabb.max = _project_data.stretcher_vertices[0].position;
-
-    for (const auto& v : _project_data.stretcher_vertices)
-    {
-        const glm::vec3& p = v.position;
-
-        _project_data.stretcher_aabb.min = glm::min(_project_data.stretcher_aabb.min, p);
-        _project_data.stretcher_aabb.max = glm::max(_project_data.stretcher_aabb.max, p);
-    }
-
-    std::vector<Point> line_vertices{
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.min.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.max.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.min.z}},
-        {{_project_data.stretcher_aabb.min.x, _project_data.stretcher_aabb.max.y, _project_data.stretcher_aabb.max.z}}};
-
-    _project_data.stretcher_aabb_vbo = new Buffer(GL_NONE, std_vector_size(line_vertices), line_vertices.data());
-    _project_data.stretcher_aabb_vao = new VertexArray(_project_data.stretcher_aabb_vbo, false, nullptr, false, layout_point);
-
-    _project_data.stretcher_vbo          = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.stretcher_vertices), _project_data.stretcher_vertices.data());
-    _project_data.stretcher_index_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(_project_data.stretcher_indices), _project_data.stretcher_indices.data());
-
-    _project_data.stretcher_vao = new VertexArray(_project_data.stretcher_vbo, false, _project_data.stretcher_index_buffer, false, layout_color_point);
-
-    spdlog::debug("Created VAO [{}], VBO [{}] and IBO [{}]", _project_data.stretcher_vao->GetID(), _project_data.stretcher_vbo->GetID(), _project_data.stretcher_index_buffer->GetID());
-
-    return true;
-}
-
-static bool rebuild_cave_opengl_data()
-{
-    const std::vector<VertexBufferAttributeLayout> layout_point_intensity = opengl_vertex_array_get_vertex_layout<PointIntensity>();
-    const std::vector<VertexBufferAttributeLayout> layout_point           = opengl_vertex_array_get_vertex_layout<Point>();
-
-    if (_project_data.cave_vertices.empty())
-    {
-        spdlog::error("Refusing to rebuild cave OpenGL data : no cave points loaded");
-        return false;
-    }
-
-    // Clear old data
-    for (auto& [ID, bucket] : _project_data.buckets)
-    {
-        // Clear LODs
-        PointCloudLOD* current = bucket.lods;
-        while (current)
+        // Extension comparison is case-insensitive (.LAS == .las)
+        std::string extension = path.extension().string();
+        for (char& c : extension)
         {
-            if (current->vao)
-            {
-                spdlog::debug("Deleting old cave [ID = {} {} {}] VAO [{}]", ID.x, ID.y, ID.z, current->vao->GetID());
-                delete current->vao;
-                current->vao = nullptr;
-            }
-
-            if (current->vbo)
-            {
-                spdlog::debug("Deleting old cave [ID = {} {} {}] VBO [{}]", ID.x, ID.y, ID.z, current->vbo->GetID());
-                delete current->vbo;
-                current->vbo = nullptr;
-            }
-
-            current->points.clear();
-            PointCloudLOD* next = current->next;
-            delete current;
-            current = next;
-        }
-        bucket.lods = nullptr;
-        bucket.draw = false;
-
-        if (bucket.bbox_vao)
-        {
-            spdlog::debug("Deleting old bounding box VAO [{}] for ID = {} {} {}", bucket.bbox_vao->GetID(), ID.x, ID.y, ID.z);
-            delete bucket.bbox_vao;
-            bucket.bbox_vao = nullptr;
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
 
-        if (bucket.bbox_vbo)
+        bool loaded = false;
+
+        if (extension == ".csv")
         {
-            spdlog::debug("Deleting old bounding box VBO [{}] for ID = {} {} {}", bucket.bbox_vbo->GetID(), ID.x, ID.y, ID.z);
-            delete bucket.bbox_vbo;
-            bucket.bbox_vbo = nullptr;
+            spdlog::info("Dropped file [{}] : loading trajectory", paths[i]);
+            loaded = load_trajectory(_project_data, path.string(), _user_settings.io.trajectory_load_every_nth);
         }
-    }
-
-    _project_data.buckets.clear();
-
-    _project_data.intensity_min = _project_data.cave_vertices.front().intensity;
-    _project_data.intensity_max = _project_data.intensity_min;
-
-    _project_data.cave_aabb.min = _project_data.cave_vertices.front().position;
-    _project_data.cave_aabb.max = _project_data.cave_aabb.min;
-
-    for (const auto& p : _project_data.cave_vertices)
-    {
-        _project_data.intensity_min = std::min(_project_data.intensity_min, p.intensity);
-        _project_data.intensity_max = std::max(_project_data.intensity_max, p.intensity);
-
-        _project_data.cave_aabb.min = glm::min(_project_data.cave_aabb.min, p.position);
-        _project_data.cave_aabb.max = glm::max(_project_data.cave_aabb.max, p.position);
-    }
-
-    bucketize_point_cloud(_project_data.cave_vertices, _project_data.buckets,
-                          _user_settings.io.map_load_extent,
-                          _user_settings.io.map_load_decimation_factor,
-                          _user_settings.io.map_load_decimation_levels,
-                          _user_settings.io.map_load_minimum_first_level_points,
-                          _user_settings.io.map_load_use_center_extent);
-
-    for (auto& [ID, bucket] : _project_data.buckets)
-    {
-        PointCloudLOD* current   = bucket.lods;
-        int            lod_level = 0;
-        while (current)
+        else if (extension == ".ply")
         {
-            if (!current->points.empty())
-            {
-                current->vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(current->points), current->points.data());
-                current->vao = new VertexArray(current->vbo, false, nullptr, false, layout_point_intensity);
-
-                spdlog::debug("Created LOD [{}] VAO [{}] and VBO [{}] for ID = [{} {} {}]", lod_level, current->vao->GetID(), current->vbo->GetID(), ID.x, ID.y, ID.z);
-            }
-
-            current = current->next;
-            ++lod_level;
+            spdlog::info("Dropped file [{}] : loading stretcher object", paths[i]);
+            loaded = load_object(_project_data, path.string());
+        }
+        else if (extension == ".las" || extension == ".laz")
+        {
+            spdlog::info("Dropped file [{}] : loading environment", paths[i]);
+            loaded = load_environment(_project_data, path.string(), _user_settings);
+        }
+        else
+        {
+            spdlog::warn("Dropped file [{}] : unsupported extension [{}], supported : .las .laz .csv .ply", paths[i], extension);
         }
 
-        glm::vec3 min = bucket.aabb.min;
-        glm::vec3 max = bucket.aabb.max;
-
-        std::vector<Point> box_vertices = {
-            {{min.x, min.y, min.z}},
-            {{max.x, min.y, min.z}},
-            {{max.x, min.y, min.z}},
-            {{max.x, max.y, min.z}},
-            {{max.x, max.y, min.z}},
-            {{min.x, max.y, min.z}},
-            {{min.x, max.y, min.z}},
-            {{min.x, min.y, min.z}},
-
-            {{min.x, min.y, max.z}},
-            {{max.x, min.y, max.z}},
-            {{max.x, min.y, max.z}},
-            {{max.x, max.y, max.z}},
-            {{max.x, max.y, max.z}},
-            {{min.x, max.y, max.z}},
-            {{min.x, max.y, max.z}},
-            {{min.x, min.y, max.z}},
-
-            {{min.x, min.y, min.z}},
-            {{min.x, min.y, max.z}},
-            {{max.x, min.y, min.z}},
-            {{max.x, min.y, max.z}},
-            {{max.x, max.y, min.z}},
-            {{max.x, max.y, max.z}},
-            {{min.x, max.y, min.z}},
-            {{min.x, max.y, max.z}}};
-
-        bucket.bbox_vbo = new Buffer(GL_NONE, std_vector_size(box_vertices), box_vertices.data());
-        bucket.bbox_vao = new VertexArray(bucket.bbox_vbo, false, nullptr, false, layout_point); //
-    }
-
-    for (auto& [ID, bucket] : _project_data.buckets)
-    {
-        size_t bucket_lod_count = 0;
-        for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+        if (!loaded && (extension == ".csv" || extension == ".ply" || extension == ".las" || extension == ".laz"))
         {
-            ++bucket_lod_count;
+            spdlog::error("Failed to load dropped file : {}", paths[i]);
         }
-
-        _project_data.max_lod_count = std::max(_project_data.max_lod_count, bucket_lod_count);
     }
-
-    if (_project_data.buckets.empty())
-    {
-        spdlog::error("Bucketization produced no buckets from {} cave points", _project_data.cave_vertices.size());
-        return false;
-    }
-
-    return true;
-}
-
-static inline void load_trajectory()
-{
-    std::string filename;
-
-    if (PFDOpenFile("Open CSV file", "CSV Files (.csv)", "*.csv", filename))
-    {
-        if (!load_trajectory_csv(filename, _project_data.trajectory_positions, _project_data.trajectory_orientations_mat33, _user_settings.io.trajectory_load_every_nth))
-        {
-            spdlog::error("Failed to load trajectory CSV : {}", filename);
-            return;
-        }
-
-        if (!rebuild_trajectory_mat33_opengl_data())
-        {
-            spdlog::error("Failed to rebuild trajectory OpenGL data for : {}", filename);
-            return;
-        }
-
-        _project_data.trajectory_path = filename;
-    }
-}
-
-// Move trajectory index by +- given amount of meters along the trajectory (if possible)
-static void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uint32_t& index, const float amount)
-{
-    if (trajectory.empty())
-    {
-        spdlog::warn("Refusing to move trajectory index : no trajectory loaded");
-        return;
-    }
-
-    const size_t last = trajectory.size() - 1;
-
-    if (amount == 0.0f)
-    {
-        return;
-    }
-
-    if (index > last)
-    {
-        index = static_cast<uint32_t>(last);
-    }
-
-    const uint32_t previous_index = index;
-
-    const glm::vec3 start_position = trajectory[index].position;
-
-    float walked = 0.0f;
-
-    if (amount >= 0.0f)
-    {
-        // Walk forward accumulating distance
-        size_t i = index;
-        while (i < last)
-        {
-            const float segment = glm::length(trajectory[i + 1].position - trajectory[i].position);
-            walked += segment;
-            ++i;
-
-            if (walked >= amount)
-            {
-                break;
-            }
-        }
-
-        if (walked < amount)
-        {
-            spdlog::debug("Requested {:.2f} m forward exceeds trajectory length : clamped to end", amount);
-        }
-
-        index = static_cast<uint32_t>(i);
-    }
-    else
-    {
-        // Walk backward accumulating distance
-        const float target = -amount;
-        size_t      i      = index;
-        while (i > 0)
-        {
-            const float segment = glm::length(trajectory[i].position - trajectory[i - 1].position);
-            walked += segment;
-            --i;
-
-            if (walked >= target)
-            {
-                break;
-            }
-        }
-
-        if (walked < target)
-        {
-            spdlog::debug("Requested {:.2f} m backward exceeds trajectory length : clamped to start", target);
-        }
-
-        index = static_cast<uint32_t>(i);
-    }
-
-    spdlog::debug("Moved trajectory index from [{}] to [{}] by requested {:.2f} m (actual {:.2f} m)", previous_index, index, amount, glm::length(trajectory[index].position - start_position));
-}
-
-static inline void load_object()
-{
-    std::string filename;
-
-    if (PFDOpenFile("Open PLY file", "PLY Files (.ply)", "*.ply", filename))
-    {
-        if (!load_stretcher_ply(filename, _project_data.stretcher_vertices, _project_data.stretcher_indices))
-        {
-            spdlog::error("Failed to load stretcher PLY : {}", filename);
-            return;
-        }
-
-        if (!rebuild_stretcher_opengl_data())
-        {
-            spdlog::error("Failed to rebuild stretcher OpenGL data for : {}", filename);
-            return;
-        }
-
-        _project_data.object_path = filename;
-    }
-}
-
-static inline void load_environment()
-{
-    std::string filename;
-
-    if (PFDOpenFile("Open LAZ file", "LAZ Files (*.laz *.las)", "*.laz *.las", filename))
-    {
-        if (!load_cave_laz(filename, _project_data.cave_vertices))
-        {
-            spdlog::error("Failed to load environment LAZ : {}", filename);
-            return;
-        }
-
-        if (!rebuild_cave_opengl_data())
-        {
-            spdlog::error("Failed to rebuild cave OpenGL data for : {}", filename);
-            return;
-        }
-
-        _project_data.environment_path = filename;
-    }
-}
-
-static inline Program* make_program(const ProgramShaderSources& sources)
-{
-    return new Program(
-        {ShaderDescriptor{
-             .shader_type = GL_VERTEX_SHADER,
-             .source_size = sources.vertex_source_size,
-             .source      = sources.vertex_source},
-         ShaderDescriptor{
-             .shader_type = GL_FRAGMENT_SHADER,
-             .source_size = sources.fragment_source_size,
-             .source      = sources.fragment_source}});
 }
 
 int main()
@@ -589,12 +151,13 @@ int main()
 
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, "cave-traversal-tool-application", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(800, 600, (std::string(WINDOW_TITLE) + WINDOW_VERSION_STRING).c_str(), nullptr, nullptr);
 
     glfwSetCursorPosCallback(window, cursor_position_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetWindowSizeCallback(window, size_callback);
+    glfwSetDropCallback(window, drop_callback);
 
     MultiViewContext ctx{};
     ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
@@ -723,6 +286,15 @@ int main()
                     ImGui::EndMenu();
                 }
 
+                // Right-aligned "Authors" text with tooltip on hover
+                const float authors_text_width = ImGui::CalcTextSize("Authors").x;
+                ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                ImGui::Text("Authors");
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
+                }
+
                 ImGui::EndMenuBar();
             }
             ImGui::End();
@@ -770,8 +342,16 @@ int main()
                                 ctx.camera_modes[i] = static_cast<CameraMode>(mode);
                                 if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
                                 {
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                                    if (ctx.symmetric_planes[i])
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                                    }
+                                    else
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                                    }
                                 }
                                 else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
                                 {
@@ -785,30 +365,66 @@ int main()
 
                             if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
                             {
-                                float old_dist = ctx.view_axis_distance[i];
-                                if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                                // Plane control mode : symmetric (single slider, planes derived from distance) vs asymmetric (independent planes)
+                                const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
+                                int         plane_mode         = ctx.symmetric_planes[i] ? 0 : 1;
+                                if (ImGui::Combo(("plane_mode##" + std::to_string(i)).c_str(), &plane_mode, plane_mode_names, 2))
                                 {
-                                    float delta               = ctx.view_axis_distance[i] - old_dist;
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
-                                    ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                                    ctx.symmetric_planes[i] = (plane_mode == 0);
+
+                                    if (ctx.symmetric_planes[i])
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                                    }
                                 }
 
-                                ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                                ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+                                if (ctx.symmetric_planes[i])
+                                {
+                                    // Symmetrical : single slider controls camera distance from the stretcher pose,
+                                    // planes are enforced each frame as distance -+ symmetric_plane_offset
+                                    ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
 
-                                if (ctx.cameras[i].near_plane < 0.01f)
-                                {
-                                    ctx.cameras[i].near_plane = 0.01f;
-                                }
-                                if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                                {
-                                    ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                                }
+                                    // ImGui::BeginDisabled(true);
+                                    // ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
+                                    // ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
+                                    // ImGui::EndDisabled();
 
-                                if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
+                                    ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f");
+
+                                    if (ImGui::Button(("Reset offset (1.25m)##" + std::to_string(i)).c_str()))
+                                    {
+                                        ctx.symmetric_plane_offset[i] = 1.25f;
+                                    }
+                                }
+                                else
                                 {
-                                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
-                                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
+                                    // Asymmetrical : independent distance / near / far control (previous behaviour)
+                                    float old_dist = ctx.view_axis_distance[i];
+                                    if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
+                                    {
+                                        float delta               = ctx.view_axis_distance[i] - old_dist;
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
+                                        ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
+                                    }
+
+                                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
+                                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+
+                                    if (ctx.cameras[i].near_plane < 0.01f)
+                                    {
+                                        ctx.cameras[i].near_plane = 0.01f;
+                                    }
+                                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
+                                    {
+                                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
+                                    }
+
+                                    if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
+                                    {
+                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
+                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
+                                    }
                                 }
                             }
                         }
@@ -821,7 +437,7 @@ int main()
                     {
                         if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
                         {
-                            load_trajectory();
+                            load_trajectory_dialog(_project_data, _user_settings);
                         }
                         ImGui::Text("%s", _project_data.trajectory_path.empty() ? "(none)" : _project_data.trajectory_path.c_str());
 
@@ -829,7 +445,7 @@ int main()
 
                         if (ImGui::Button("Load object", ImVec2(200.0f, 0.0f)))
                         {
-                            load_object();
+                            load_object_dialog(_project_data);
                         }
                         ImGui::Text("%s", _project_data.object_path.empty() ? "(none)" : _project_data.object_path.c_str());
 
@@ -837,7 +453,7 @@ int main()
 
                         if (ImGui::Button("Load environment", ImVec2(200.0f, 0.0f)))
                         {
-                            load_environment();
+                            load_environment_dialog(_project_data, _user_settings);
                         }
                         ImGui::Text("%s", _project_data.environment_path.empty() ? "(none)" : _project_data.environment_path.c_str());
 
@@ -847,11 +463,11 @@ int main()
                     ImGui::Separator();
                     if (ImGui::TreeNode("Level of Detail (LOD)"))
                     {
-                        ImGui::Checkbox("g_use_fixed_lod", &g_use_fixed_lod);
+                        ImGui::Checkbox("use_fixed_lod", &_project_data.use_fixed_lod);
 
                         const int32_t max_lod_index = _project_data.max_lod_count > 0 ? static_cast<int32_t>(_project_data.max_lod_count - 1) : 0;
-                        ImGui::BeginDisabled(!g_use_fixed_lod);
-                        ImGui::SliderInt("g_fixed_lod_index", &g_fixed_lod_index, 0, max_lod_index);
+                        ImGui::BeginDisabled(!_project_data.use_fixed_lod);
+                        ImGui::SliderInt("fixed_lod_index", &_project_data.fixed_lod_index, 0, max_lod_index);
                         ImGui::EndDisabled();
                         ImGui::TreePop();
                     }
@@ -864,40 +480,40 @@ int main()
                             const uint32_t zero                  = 0U;
                             const uint32_t max_orientation_index = static_cast<uint32_t>(_project_data.trajectory_orientations_mat33.size()) - 1U;
 
-                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(g_trajectory_index), max_orientation_index, static_cast<float>(g_trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
-                            ImGui::Checkbox("g_trajectory_index_auto_play", &g_trajectory_index_auto_play);
-                            ImGui::DragInt("g_trajectory_index_auto_play_increment", &g_trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
-                            ImGui::DragScalar("g_trajectory_index", ImGuiDataType_U32, &g_trajectory_index, 1.0f, &zero, &max_orientation_index);
+                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(_project_data.trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(_project_data.trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
+                            ImGui::Checkbox("trajectory_index_auto_play", &_project_data.trajectory_index_auto_play);
+                            ImGui::DragInt("trajectory_index_auto_play_increment", &_project_data.trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
+                            ImGui::DragScalar("trajectory_index", ImGuiDataType_U32, &_project_data.trajectory_index, 1.0f, &zero, &max_orientation_index);
 
                             // Trajectory traversal buttons : move +- given meters along the trajectory
                             if (ImGui::Button("- 1 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -1.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -1.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("- 5 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -5.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -5.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("- 10 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, -10.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -10.0f);
                             }
 
                             if (ImGui::Button("+ 1 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +1.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +1.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("+ 5 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +5.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +5.0f);
                             }
                             ImGui::SameLine();
                             if (ImGui::Button("+ 10 m"))
                             {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, g_trajectory_index, +10.0f);
+                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +10.0f);
                             }
                         }
                         else
@@ -908,19 +524,17 @@ int main()
                         ImGui::TreePop();
                     }
 
-                    ImGui::Checkbox("g_modify_current_pose_with_gizmo", &g_modify_current_pose_with_gizmo);
-
                     ImGui::Separator();
-                    ImGui::Checkbox("Lock target to trajectory", &g_lock_viewport0_target_to_trajectory);
+                    ImGui::Checkbox("Lock target to trajectory", &_project_data.lock_viewport0_target_to_trajectory);
                     ImGui::SameLine();
                     if (ImGui::Button("Snap"))
                     {
                         if (_project_data.trajectory_positions.size())
                         {
-                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
+                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
                         }
                     }
-                    if (g_lock_viewport0_target_to_trajectory)
+                    if (_project_data.lock_viewport0_target_to_trajectory)
                     {
                         ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
                     }
@@ -942,25 +556,25 @@ int main()
         glm::vec3 stretcher_position    = glm::vec3(0.0f);
         glm::mat3 stretcher_orientation = glm::mat3(1.0f);
 
-        if (g_trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
+        if (_project_data.trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
         {
             const size_t last = _project_data.trajectory_orientations_mat33.size() - 1;
 
-            if (g_trajectory_index + g_trajectory_index_auto_play_increment >= last)
+            if (_project_data.trajectory_index + _project_data.trajectory_index_auto_play_increment >= last)
             {
-                g_trajectory_index           = last;
-                g_trajectory_index_auto_play = false;
+                _project_data.trajectory_index           = last;
+                _project_data.trajectory_index_auto_play = false;
             }
             else
             {
-                g_trajectory_index += g_trajectory_index_auto_play_increment;
+                _project_data.trajectory_index += _project_data.trajectory_index_auto_play_increment;
             }
         }
 
         if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
         {
-            const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
-            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
+            const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
+            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[_project_data.trajectory_index];
 
             stretcher_position    = trajectory_point.position;
             stretcher_orientation = trajectoryorientation.orientation;
@@ -1021,15 +635,15 @@ int main()
             }
         }
 
-        if (g_modify_current_pose_with_gizmo || glfwGetKey(window, GLFW_KEY_G))
+        if (glfwGetKey(window, GLFW_KEY_G))
         {
             glm::vec3 stretcher_position    = glm::vec3(0.0f);
             glm::mat3 stretcher_orientation = glm::mat3(1.0f);
 
             if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                const auto& trajectory_point      = _project_data.trajectory_positions[g_trajectory_index];
-                const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[g_trajectory_index];
+                const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
+                const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[_project_data.trajectory_index];
 
                 stretcher_position    = trajectory_point.position;
                 stretcher_orientation = trajectoryorientation.orientation;
@@ -1077,10 +691,10 @@ int main()
 
             if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
-                _project_data.trajectory_positions[g_trajectory_index].position             = position;
-                _project_data.trajectory_orientations_mat33[g_trajectory_index].orientation = rotation;
+                _project_data.trajectory_positions[_project_data.trajectory_index].position             = position;
+                _project_data.trajectory_orientations_mat33[_project_data.trajectory_index].orientation = rotation;
 
-                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * g_trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[g_trajectory_index].position);
+                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
         }
         // VIEWPORT DIVIDER LINES
@@ -1193,7 +807,7 @@ int main()
                         if (found)
                         {
                             spdlog::info("Trajectory pick in viewport {} : index = [{}] (distance to ray {:.3f} m)", pick_idx, best_index, best_dist);
-                            g_trajectory_index = best_index;
+                            _project_data.trajectory_index = best_index;
                         }
                         else
                         {
@@ -1412,7 +1026,7 @@ int main()
                         ++lod_count;
                     }
 
-                    size_t         lod_index = g_use_fixed_lod ? static_cast<size_t>(g_fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
+                    size_t         lod_index = _project_data.use_fixed_lod ? static_cast<size_t>(_project_data.fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
                     PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
 
                     if (!lod || !lod_in_camera_frustum(*lod, frustum))
@@ -1518,9 +1132,9 @@ int main()
 
         const int count = static_cast<int>(ctx.active_count);
 
-        if (g_lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
+        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
         {
-            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[g_trajectory_index].position);
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
         }
 
         for (int i = 0; i < count; ++i)
@@ -1528,6 +1142,13 @@ int main()
             if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
             {
                 update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
+
+                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                if (ctx.symmetric_planes[i])
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
             }
             else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
             {

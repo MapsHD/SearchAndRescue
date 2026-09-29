@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
 
-project(cave-traversal-tool)
+project(cave-traversal-tool VERSION 1.0.0)
+
+# Project version : exposed to C++ as CAVE_TRAVERSAL_TOOL_VERSION_MAJOR / _MINOR / _PATCH defines
+add_compile_definitions(
+    CAVE_TRAVERSAL_TOOL_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    CAVE_TRAVERSAL_TOOL_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+    CAVE_TRAVERSAL_TOOL_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
 set(CMAKE_CXX_STANDARD            23)
 set(CMAKE_CXX_STANDARD_REQUIRED   ON)
@@ -55,6 +61,7 @@ target_sources(cave-traversal-tool
         src/FileIO.cpp
         src/PFDWrapper.cpp
         src/Processing.cpp
+        src/Project.cpp
         src/Program.cpp
         src/UserSettings.cpp
         src/VertexArray.cpp
