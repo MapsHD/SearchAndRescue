@@ -1,5 +1,5 @@
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -7,6 +7,7 @@
 #include <ranges>
 #include <sstream>
 #include <vector>
+
 
 // clang-format off
 #include <spdlog/spdlog.h>
@@ -43,20 +44,20 @@
 #include <ImGuizmo.h>
 
 #ifndef CAVE_TRAVERSAL_TOOL_VERSION_MAJOR
-#define CAVE_TRAVERSAL_TOOL_VERSION_MAJOR 0
+    #define CAVE_TRAVERSAL_TOOL_VERSION_MAJOR 0
 #endif
 #ifndef CAVE_TRAVERSAL_TOOL_VERSION_MINOR
-#define CAVE_TRAVERSAL_TOOL_VERSION_MINOR 0
+    #define CAVE_TRAVERSAL_TOOL_VERSION_MINOR 0
 #endif
 #ifndef CAVE_TRAVERSAL_TOOL_VERSION_PATCH
-#define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
+    #define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
 #endif
 
 static constexpr const char* WINDOW_TITLE = "cave-traversal-tool v";
 
 // Stringify version defines into a single "X.Y.Z" string
 #define CTT_STR2(x) #x
-#define CTT_STR(x)  CTT_STR2(x)
+#define CTT_STR(x) CTT_STR2(x)
 static const std::string WINDOW_VERSION_STRING =
     CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MAJOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_MINOR) "." CTT_STR(CAVE_TRAVERSAL_TOOL_VERSION_PATCH);
 
@@ -802,6 +803,15 @@ int main()
                     ImGui::MenuItem("Display debug tab", nullptr, &_gui_state.display_debug_tab);
 
                     ImGui::EndMenu();
+                }
+
+                // Right-aligned "Authors" text with tooltip on hover
+                const float authors_text_width = ImGui::CalcTextSize("Authors").x;
+                ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                ImGui::Text("Authors");
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
                 }
 
                 ImGui::EndMenuBar();
