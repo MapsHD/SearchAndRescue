@@ -61,6 +61,7 @@ target_sources(cave-traversal-tool
         src/FileIO.cpp
         src/PFDWrapper.cpp
         src/Processing.cpp
+        src/Project.cpp
         src/Program.cpp
         src/UserSettings.cpp
         src/VertexArray.cpp
