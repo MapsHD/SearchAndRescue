@@ -1,4 +1,5 @@
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -400,25 +401,32 @@ static bool rebuild_cave_opengl_data()
     return true;
 }
 
+// Load trajectory from explicit file path (returns true on success)
+static bool load_trajectory(const std::string& filename)
+{
+    if (!load_trajectory_csv(filename, _project_data.trajectory_positions, _project_data.trajectory_orientations_mat33, _user_settings.io.trajectory_load_every_nth))
+    {
+        spdlog::error("Failed to load trajectory CSV : {}", filename);
+        return false;
+    }
+
+    if (!rebuild_trajectory_mat33_opengl_data())
+    {
+        spdlog::error("Failed to rebuild trajectory OpenGL data for : {}", filename);
+        return false;
+    }
+
+    _project_data.trajectory_path = filename;
+    return true;
+}
+
 static inline void load_trajectory()
 {
     std::string filename;
 
     if (PFDOpenFile("Open CSV file", "CSV Files (.csv)", "*.csv", filename))
     {
-        if (!load_trajectory_csv(filename, _project_data.trajectory_positions, _project_data.trajectory_orientations_mat33, _user_settings.io.trajectory_load_every_nth))
-        {
-            spdlog::error("Failed to load trajectory CSV : {}", filename);
-            return;
-        }
-
-        if (!rebuild_trajectory_mat33_opengl_data())
-        {
-            spdlog::error("Failed to rebuild trajectory OpenGL data for : {}", filename);
-            return;
-        }
-
-        _project_data.trajectory_path = filename;
+        load_trajectory(filename);
     }
 }
 
@@ -500,26 +508,52 @@ static void move_trajectory_index_by_distance(const std::vector<Point>& trajecto
     spdlog::debug("Moved trajectory index from [{}] to [{}] by requested {:.2f} m (actual {:.2f} m)", previous_index, index, amount, glm::length(trajectory[index].position - start_position));
 }
 
+// Load stretcher (object) from explicit file path (returns true on success)
+static bool load_object(const std::string& filename)
+{
+    if (!load_stretcher_ply(filename, _project_data.stretcher_vertices, _project_data.stretcher_indices))
+    {
+        spdlog::error("Failed to load stretcher PLY : {}", filename);
+        return false;
+    }
+
+    if (!rebuild_stretcher_opengl_data())
+    {
+        spdlog::error("Failed to rebuild stretcher OpenGL data for : {}", filename);
+        return false;
+    }
+
+    _project_data.object_path = filename;
+    return true;
+}
+
 static inline void load_object()
 {
     std::string filename;
 
     if (PFDOpenFile("Open PLY file", "PLY Files (.ply)", "*.ply", filename))
     {
-        if (!load_stretcher_ply(filename, _project_data.stretcher_vertices, _project_data.stretcher_indices))
-        {
-            spdlog::error("Failed to load stretcher PLY : {}", filename);
-            return;
-        }
-
-        if (!rebuild_stretcher_opengl_data())
-        {
-            spdlog::error("Failed to rebuild stretcher OpenGL data for : {}", filename);
-            return;
-        }
-
-        _project_data.object_path = filename;
+        load_object(filename);
     }
+}
+
+// Load environment (cave point cloud) from explicit file path (returns true on success)
+static bool load_environment(const std::string& filename)
+{
+    if (!load_cave_laz(filename, _project_data.cave_vertices))
+    {
+        spdlog::error("Failed to load environment LAZ : {}", filename);
+        return false;
+    }
+
+    if (!rebuild_cave_opengl_data())
+    {
+        spdlog::error("Failed to rebuild cave OpenGL data for : {}", filename);
+        return false;
+    }
+
+    _project_data.environment_path = filename;
+    return true;
 }
 
 static inline void load_environment()
@@ -528,19 +562,50 @@ static inline void load_environment()
 
     if (PFDOpenFile("Open LAZ file", "LAZ Files (*.laz *.las)", "*.laz *.las", filename))
     {
-        if (!load_cave_laz(filename, _project_data.cave_vertices))
+        load_environment(filename);
+    }
+}
+
+// GLFW drop callback : route each dropped file to the appropriate loader based on its extension
+static void drop_callback(GLFWwindow*, int count, const char** paths)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        std::filesystem::path path(paths[i]);
+
+        // Extension comparison is case-insensitive (.LAS == .las)
+        std::string extension = path.extension().string();
+        for (char& c : extension)
         {
-            spdlog::error("Failed to load environment LAZ : {}", filename);
-            return;
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         }
 
-        if (!rebuild_cave_opengl_data())
+        bool loaded = false;
+
+        if (extension == ".csv")
         {
-            spdlog::error("Failed to rebuild cave OpenGL data for : {}", filename);
-            return;
+            spdlog::info("Dropped file [{}] : loading trajectory", paths[i]);
+            loaded = load_trajectory(path.string());
+        }
+        else if (extension == ".ply")
+        {
+            spdlog::info("Dropped file [{}] : loading stretcher object", paths[i]);
+            loaded = load_object(path.string());
+        }
+        else if (extension == ".las" || extension == ".laz")
+        {
+            spdlog::info("Dropped file [{}] : loading environment", paths[i]);
+            loaded = load_environment(path.string());
+        }
+        else
+        {
+            spdlog::warn("Dropped file [{}] : unsupported extension [{}], supported : .las .laz .csv .ply", paths[i], extension);
         }
 
-        _project_data.environment_path = filename;
+        if (!loaded && (extension == ".csv" || extension == ".ply" || extension == ".las" || extension == ".laz"))
+        {
+            spdlog::error("Failed to load dropped file : {}", paths[i]);
+        }
     }
 }
 
@@ -592,6 +657,7 @@ int main()
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetScrollCallback(window, scroll_callback);
     glfwSetWindowSizeCallback(window, size_callback);
+    glfwSetDropCallback(window, drop_callback);
 
     MultiViewContext ctx{};
     ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
