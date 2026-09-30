@@ -159,7 +159,7 @@ int main()
     glfwSetWindowSizeCallback(window, size_callback);
     glfwSetDropCallback(window, drop_callback);
 
-    MultiViewContext ctx{};
+    MultiViewContext& ctx = _project_data.multi_view;
     ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
     ctx.cameras[1].position = glm::vec3(-10.0f, 10.0f, 10.0f);
     ctx.cameras[2].position = glm::vec3(10.0f, -10.0f, 10.0f);
@@ -170,7 +170,7 @@ int main()
         ctx.cameras[i].viewport_w = static_cast<float>(vp.w);
         ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
     }
-    glfwSetWindowUserPointer(window, &ctx);
+    glfwSetWindowUserPointer(window, &_project_data.multi_view);
 
     glfwMakeContextCurrent(window);
 
@@ -303,7 +303,7 @@ int main()
         {
             if (_gui_state.display_project_tab)
             {
-                if (ImGui::Begin("Application", &_gui_state.display_project_tab))
+                if (ImGui::Begin("ProjectData", &_gui_state.display_project_tab))
                 {
                     if (ImGui::TreeNode("Viewport"))
                     {

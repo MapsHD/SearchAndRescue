@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include <cave-traversal-tool/Camera.h>
 #include <cave-traversal-tool/PointCloud.h>
 #include <cave-traversal-tool/UserSettings.h>
 
@@ -66,6 +67,9 @@ struct ProjectData
 
     // Lock viewport 0 camera target to current trajectory pose
     bool lock_viewport0_target_to_trajectory = false;
+
+    // Multi-view rendering context : per-viewport cameras, camera modes, plane settings and window size
+    MultiViewContext multi_view{};
 };
 
 // Size of vector contents in bytes (helper for OpenGL buffer uploads)
