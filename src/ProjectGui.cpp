@@ -281,24 +281,27 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
             }
             else
             {
-                if (ImGui::BeginTable("##meas_table", 4,
+                int erase_index = -1; // deferred single-row deletion
+
+                if (ImGui::BeginTable("##meas_table", 5,
                                       ImGuiTableFlags_Borders |
                                           ImGuiTableFlags_RowBg |
                                           ImGuiTableFlags_SizingStretchProp))
                 {
-                    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+                    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 28.0f);
                     ImGui::TableSetupColumn("Point A", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Point B", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Distance (m)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+                    ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 26.0f);
                     ImGui::TableHeadersRow();
 
-                    for (size_t i = 0; i < ms.entries.size(); ++i)
+                    for (int i = 0; i < static_cast<int>(ms.entries.size()); ++i)
                     {
                         const MeasurementEntry& e = ms.entries[i];
                         ImGui::TableNextRow();
 
                         ImGui::TableSetColumnIndex(0);
-                        ImGui::Text("%zu", i + 1);
+                        ImGui::Text("%d", i + 1);
 
                         ImGui::TableSetColumnIndex(1);
                         ImGui::Text("(%.3f, %.3f, %.3f)", e.point_a.x, e.point_a.y, e.point_a.z);
@@ -308,8 +311,26 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
                         ImGui::TableSetColumnIndex(3);
                         ImGui::Text("%.4f", e.distance_m);
+
+                        ImGui::TableSetColumnIndex(4);
+                        ImGui::PushID(i);
+                        if (ImGui::SmallButton("x"))
+                        {
+                            erase_index = i;
+                        }
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::SetTooltip("Remove measurement %d", i + 1);
+                        }
+                        ImGui::PopID();
                     }
                     ImGui::EndTable();
+                }
+
+                // Apply deferred deletion (outside the table loop to avoid invalidation)
+                if (erase_index >= 0)
+                {
+                    ms.entries.erase(ms.entries.begin() + erase_index);
                 }
 
                 ImGui::Spacing();
@@ -318,6 +339,11 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ms.entries.clear();
                     ms.pending_point.reset();
                 }
+            }
+
+            // Cancel pending is always reachable when a point is waiting
+            if (ms.pending_point.has_value())
+            {
                 ImGui::SameLine();
                 if (ImGui::Button("Cancel pending"))
                 {

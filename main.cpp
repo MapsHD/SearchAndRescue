@@ -466,12 +466,39 @@ int main()
                 glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
         }
+
+        const int count = static_cast<int>(ctx.active_count);
+
+        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
+        {
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
+        }
+
+        for (int i = 0; i < count; ++i)
+        {
+            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+            {
+                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
+
+                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                if (ctx.symmetric_planes[i])
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
+            }
+            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
+            {
+                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
+            }
+        }
+
         // VIEWPORT DIVIDER LINES
         {
             int vp_count = static_cast<int>(ctx.active_count);
             if (vp_count >= 2)
             {
-                ImDrawList* dl  = ImGui::GetBackgroundDrawList();
+                ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
                 ImU32       col = IM_COL32(180, 180, 180, 200);
 
                 // Vertical center line for modes 2 and 4
@@ -489,6 +516,75 @@ int main()
                         ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
                         col,
                         1.0f);
+                }
+            }
+        }
+
+        // MEASUREMENT LABELS : project each midpoint through VP0 and draw a 2-D distance label
+        {
+            const MeasurementState& ms = _project_data.measurements;
+
+            if (!ms.entries.empty())
+            {
+                const Camera&  cam0 = ctx.cameras[0];
+                const Viewport vp0  = ctx.viewport_for(0);
+
+                const glm::mat4 proj0 = glm::perspectiveFov(
+                    glm::radians(55.0f),
+                    static_cast<float>(vp0.w), static_cast<float>(vp0.h),
+                    cam0.near_plane, cam0.far_plane);
+                const glm::mat4 view0 = cam0.get_view();
+                const glm::mat4 MVP0  = proj0 * view0;
+
+                ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+
+                // Top-left corner of VP0 in ImGui (screen) coordinates
+                // OpenGL vp0.y is measured from the bottom, so screen_top = height - (vp0.y + vp0.h)
+                const float vp_screen_x = static_cast<float>(vp0.x);
+                const float vp_screen_y = static_cast<float>(height - (vp0.y + vp0.h));
+
+                for (size_t i = 0; i < ms.entries.size(); ++i)
+                {
+                    const MeasurementEntry& e = ms.entries[i];
+
+                    const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
+                    const glm::vec4 clip     = MVP0 * glm::vec4(midpoint, 1.0f);
+
+                    // Behind the camera → skip
+                    if (clip.w <= 0.0f)
+                    {
+                        continue;
+                    }
+
+                    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+                    // Outside the NDC cube → skip
+                    if (ndc.x < -1.0f || ndc.x > 1.0f ||
+                        ndc.y < -1.0f || ndc.y > 1.0f ||
+                        ndc.z < -1.0f || ndc.z > 1.0f)
+                    {
+                        continue;
+                    }
+
+                    // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
+                    const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp0.w);
+                    const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp0.h);
+
+                    char label[64];
+                    std::snprintf(label, sizeof(label), "%zu: %.4f m", i + 1, e.distance_m);
+
+                    const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
+                    const ImVec2 text_size = ImGui::CalcTextSize(label);
+
+                    // Semi-transparent dark background rect for readability
+                    dl->AddRectFilled(
+                        ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
+                        ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
+                        IM_COL32(0, 0, 0, 160),
+                        2.0f);
+
+                    // Cyan text matching the measurement line colour
+                    dl->AddText(text_pos, IM_COL32(0, 255, 255, 255), label);
                 }
             }
         }
@@ -1136,36 +1232,11 @@ int main()
             }
         };
 
-        const int count = static_cast<int>(ctx.active_count);
-
-        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
-        {
-            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
-        }
-
-        for (int i = 0; i < count; ++i)
-        {
-            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
-            {
-                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
-
-                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
-                if (ctx.symmetric_planes[i])
-                {
-                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                }
-            }
-            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
-            {
-                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
-            }
-        }
-
         for (int i = 0; i < count; ++i)
         {
             draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
         }
+
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
