@@ -1,4 +1,4 @@
-#include <cctype>
+﻿#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -493,17 +493,22 @@ int main()
 
         // PICKING POINT CLOUD
         {
-            static bool prev_mouse_pressed = false;
+            static bool prev_mouse_pressed       = false;
+            static bool prev_mouse_right_pressed = false;
 
-            bool ctrl_pressed  = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
-            bool alt_pressed   = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
-            bool mouse_pressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            bool ctrl_pressed        = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
+            bool alt_pressed         = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
+            bool mouse_pressed       = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            bool mouse_right_pressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
 
             // Trigger once when mouse goes from released -> pressed, while Ctrl (bucket pick) or Alt (trajectory pick) is held
-            bool new_click     = mouse_pressed && !prev_mouse_pressed && (ctrl_pressed || alt_pressed);
-            prev_mouse_pressed = mouse_pressed;
+            bool new_click = mouse_pressed && !prev_mouse_pressed && (ctrl_pressed || alt_pressed);
+            // Ctrl + right button : pick a specific point inside the bucket under the cursor
+            bool new_right_click = mouse_right_pressed && !prev_mouse_right_pressed && ctrl_pressed && !alt_pressed;
+            prev_mouse_pressed       = mouse_pressed;
+            prev_mouse_right_pressed = mouse_right_pressed;
 
-            if (new_click && !ImGui::GetIO().WantCaptureMouse)
+            if ((new_click || new_right_click) && !ImGui::GetIO().WantCaptureMouse)
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
@@ -635,12 +640,67 @@ int main()
 
                         if (picked_record)
                         {
-                            spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
-
                             glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                            glm::vec3 focus   = center;
+
+                            // Ctrl + right click : pick the point in this bucket closest to the cast ray,
+                            // and focus the camera target on it (instead of the bucket center)
+                            if (new_right_click)
+                            {
+                                const float POINT_PICK_RADIUS = 0.05f;
+
+                                bool     point_found = false;
+                                float    best_d      = POINT_PICK_RADIUS;
+                                float    best_t      = std::numeric_limits<float>::max();
+                                glm::vec3 best_point{};
+
+                                for (PointCloudLOD* lod = picked_record->lods; lod; lod = lod->next)
+                                {
+                                    for (const PointIntensity& p : lod->points)
+                                    {
+                                        const glm::vec3 to_point = p.position - camera_pos;
+                                        const float     t        = glm::dot(to_point, ray_dir);
+
+                                        if (t <= 0.0f)
+                                        {
+                                            continue;
+                                        }
+
+                                        const float d = glm::length(to_point - t * ray_dir);
+
+                                        if (d > best_d)
+                                        {
+                                            continue;
+                                        }
+
+                                        if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
+                                        {
+                                            point_found = true;
+                                            best_d      = d;
+                                            best_t      = t;
+                                            best_point  = p.position;
+                                        }
+                                    }
+                                }
+
+                                if (point_found)
+                                {
+                                    focus = best_point;
+                                    spdlog::info("Point pick in viewport {} : bucket [{} {} {}], point ({:.3f}, {:.3f}, {:.3f}) (distance to ray {:.3f} m)", pick_idx, picked_id.x, picked_id.y, picked_id.z, focus.x, focus.y, focus.z, best_d);
+                                }
+                                else
+                                {
+                                    spdlog::warn("Point picking missed ... (no point within {:.2f} m of ray in bucket [{} {} {}])", POINT_PICK_RADIUS, picked_id.x, picked_id.y, picked_id.z);
+                                }
+                            }
+                            else
+                            {
+                                spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
+                            }
+
                             glm::vec3 offset  = pick_cam.position - pick_cam.target;
-                            pick_cam.target   = center;
-                            pick_cam.position = pick_cam.target + offset;
+                            pick_cam.target   = focus;
+                            pick_cam.position = focus + offset;
                         }
                         else
                         {

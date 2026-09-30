@@ -302,7 +302,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
     if (button == GLFW_MOUSE_BUTTON_RIGHT)
     {
-        camera.panning = true;
+        // Ctrl + right button is used for point picking, do not start panning in that case
+        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) != GLFW_PRESS)
+        {
+            camera.panning = true;
+        }
     }
 
     for (int i = 0; i < MultiViewContext::MAX_CAMERAS; ++i)
