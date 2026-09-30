@@ -1,4 +1,4 @@
-﻿#include <cctype>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -207,6 +207,10 @@ int main()
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
     _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
     _project_data.collision_points_vao = new VertexArray(_project_data.collision_points_vbo, false, nullptr, false, layout_point);
+
+    // Measurement lines : pre-allocated GPU buffer, 2 vertices per completed entry
+    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(Point), nullptr);
+    _project_data.measurement_line_vao = new VertexArray(_project_data.measurement_line_vbo, false, nullptr, false, layout_point);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -711,6 +715,152 @@ int main()
             }
         }
 
+        // MEASUREMENT PICKING (Shift + LMB)
+        {
+            static bool prev_shift_mouse_pressed = false;
+
+            bool shift_pressed        = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ||
+                                        (glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+            bool mouse_pressed        = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+            bool new_shift_click      = mouse_pressed && !prev_shift_mouse_pressed && shift_pressed;
+            prev_shift_mouse_pressed  = mouse_pressed;
+
+            if (new_shift_click && !ImGui::GetIO().WantCaptureMouse)
+            {
+                double mouse_x, mouse_y;
+                glfwGetCursorPos(window, &mouse_x, &mouse_y);
+
+                int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
+                if (pick_idx >= 0)
+                {
+                    Camera&  pick_cam = ctx.cameras[pick_idx];
+                    Viewport vp       = ctx.viewport_for(pick_idx);
+
+                    double local_x    = mouse_x - vp.x;
+                    double local_gl_y = (static_cast<double>(height) - mouse_y) - vp.y;
+
+                    float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
+                    float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
+
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_view       = pick_cam.get_view();
+
+                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
+                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
+                    ray_eye.z         = -1.0f;
+                    ray_eye.w         = 0.0f;
+
+                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
+                    glm::vec3 camera_pos     = pick_cam.position;
+                    glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
+
+                    // Find the closest point cloud point to the ray, respecting near/far planes
+                    const float MEAS_PICK_RADIUS = 0.05f;
+
+                    bool      point_found = false;
+                    float     best_d      = MEAS_PICK_RADIUS;
+                    float     best_t      = std::numeric_limits<float>::max();
+                    glm::vec3 best_point{};
+
+                    for (auto& [ID, bucket] : _project_data.buckets)
+                    {
+                        for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+                        {
+                            for (const PointIntensity& p : lod->points)
+                            {
+                                const glm::vec3 to_point = p.position - camera_pos;
+
+                                // t = projection onto the ray
+                                const float t = glm::dot(to_point, ray_dir);
+
+                                // Respect camera near/far: the point must be visible
+                                // (its depth along camera_forward must lie within [near_plane, far_plane])
+                                const float depth = glm::dot(to_point, camera_forward);
+                                if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
+                                {
+                                    continue;
+                                }
+
+                                if (t <= 0.0f)
+                                {
+                                    continue;
+                                }
+
+                                const float d = glm::length(to_point - t * ray_dir);
+
+                                if (d > best_d)
+                                {
+                                    continue;
+                                }
+
+                                if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
+                                {
+                                    point_found = true;
+                                    best_d      = d;
+                                    best_t      = t;
+                                    best_point  = p.position;
+                                }
+                            }
+                        }
+                    }
+
+                    if (point_found)
+                    {
+                        MeasurementState& ms = _project_data.measurements;
+
+                        if (!ms.pending_point.has_value())
+                        {
+                            // First pick : store the start point
+                            ms.pending_point = best_point;
+                            spdlog::info("Measurement pick A in viewport {} : ({:.3f}, {:.3f}, {:.3f})", pick_idx, best_point.x, best_point.y, best_point.z);
+                        }
+                        else
+                        {
+                            // Second pick : complete the measurement
+                            MeasurementEntry entry;
+                            entry.point_a    = ms.pending_point.value();
+                            entry.point_b    = best_point;
+                            entry.distance_m = glm::length(entry.point_b - entry.point_a);
+
+                            if (ms.entries.size() < ProjectData::MEASUREMENT_LINE_CAPACITY)
+                            {
+                                ms.entries.push_back(entry);
+                            }
+                            else
+                            {
+                                spdlog::warn("Measurement capacity reached ({} entries) – clear some before adding more", ProjectData::MEASUREMENT_LINE_CAPACITY);
+                            }
+
+                            ms.pending_point.reset();
+                            spdlog::info("Measurement pick B in viewport {} : ({:.3f}, {:.3f}, {:.3f}) | distance = {:.4f} m", pick_idx, best_point.x, best_point.y, best_point.z, entry.distance_m);
+                        }
+                    }
+                    else
+                    {
+                        spdlog::warn("Measurement picking missed (no point within {:.3f} m of ray in viewport {})", MEAS_PICK_RADIUS, pick_idx);
+                    }
+                }
+            }
+
+            // Upload measurement line vertices to GPU each frame
+            if (_project_data.measurement_line_vbo)
+            {
+                const MeasurementState& ms = _project_data.measurements;
+
+                static std::vector<Point> meas_verts;
+                meas_verts.clear();
+                for (const MeasurementEntry& e : ms.entries)
+                {
+                    meas_verts.push_back({e.point_a});
+                    meas_verts.push_back({e.point_b});
+                }
+                if (!meas_verts.empty())
+                {
+                    _project_data.measurement_line_vbo->Upload(meas_verts.data(), meas_verts.size() * sizeof(Point));
+                }
+            }
+        }
+
         auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
         {
             glViewport(vp.x, vp.y, vp.w, vp.h);
@@ -758,6 +908,37 @@ int main()
                 _project_data.trajectory_positions_vao->Bind();
                 _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
                 glLineWidth(1.0f);
+            }
+
+            // MEASUREMENT LINES : draw completed entries as 3-D lines in world space
+            {
+                const MeasurementState& ms = _project_data.measurements;
+                const size_t entry_count   = ms.entries.size();
+
+                if (entry_count > 0 && _project_data.measurement_line_vao)
+                {
+                    glLineWidth(2.0f);
+                    trajectory_program->Bind();
+                    trajectory_program->PushUniform16F32("u_MVP", MVP);
+                    // Bright cyan lines for measurements
+                    trajectory_program->PushUniform3F32("u_Color", glm::vec3(0.0f, 1.0f, 1.0f));
+                    _project_data.measurement_line_vao->Bind();
+                    // GL_LINES interprets consecutive vertex pairs as independent segments
+                    _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(2 * entry_count));
+                    glLineWidth(1.0f);
+                }
+
+                // MEASUREMENT PENDING POINT : draw a small yellow cross at the first picked point
+                if (ms.pending_point.has_value() && _user_settings.target.draw_enable)
+                {
+                    camera_target_program->Bind();
+                    camera_target_program->PushUniform16F32("u_MVP", MVP);
+                    camera_target_program->PushUniform3F32("u_Translation", ms.pending_point.value());
+                    camera_target_program->PushUniform1F32("u_Scale", _user_settings.target.scale * 0.5f);
+                    camera_target_program->PushUniform3F32("u_Color", glm::vec3(1.0f, 1.0f, 0.0f));
+                    target_vao->Bind();
+                    target_vao->DrawArray(GL_LINES, 6);
+                }
             }
 
             //  STRETCHER

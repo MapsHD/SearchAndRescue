@@ -2,6 +2,8 @@
 
 #include <imgui.h>
 
+#include <glm/glm.hpp>
+
 #include <limits>
 
 // Moves camera target (keeping position - target offset) to the given pose position
@@ -250,6 +252,80 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
         if (project_data.lock_viewport0_target_to_trajectory)
         {
             ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
+        }
+
+        ImGui::Separator();
+        if (ImGui::TreeNode("Measurements"))
+        {
+            MeasurementState& ms = project_data.measurements;
+
+            // Status line
+            if (ms.pending_point.has_value())
+            {
+                const glm::vec3& p = ms.pending_point.value();
+                ImGui::TextColored({1.0f, 1.0f, 0.0f, 1.0f},
+                                   "Pending: (%.3f, %.3f, %.3f)  -- Shift+LMB to pick end point",
+                                   p.x, p.y, p.z);
+            }
+            else
+            {
+                ImGui::TextDisabled("Shift+LMB in any viewport to start a measurement");
+            }
+
+            ImGui::Spacing();
+
+            // Measurement table
+            if (ms.entries.empty())
+            {
+                ImGui::TextDisabled("(no measurements yet)");
+            }
+            else
+            {
+                if (ImGui::BeginTable("##meas_table", 4,
+                                      ImGuiTableFlags_Borders |
+                                          ImGuiTableFlags_RowBg |
+                                          ImGuiTableFlags_SizingStretchProp))
+                {
+                    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 30.0f);
+                    ImGui::TableSetupColumn("Point A", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Point B", ImGuiTableColumnFlags_WidthStretch);
+                    ImGui::TableSetupColumn("Distance (m)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+                    ImGui::TableHeadersRow();
+
+                    for (size_t i = 0; i < ms.entries.size(); ++i)
+                    {
+                        const MeasurementEntry& e = ms.entries[i];
+                        ImGui::TableNextRow();
+
+                        ImGui::TableSetColumnIndex(0);
+                        ImGui::Text("%zu", i + 1);
+
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("(%.3f, %.3f, %.3f)", e.point_a.x, e.point_a.y, e.point_a.z);
+
+                        ImGui::TableSetColumnIndex(2);
+                        ImGui::Text("(%.3f, %.3f, %.3f)", e.point_b.x, e.point_b.y, e.point_b.z);
+
+                        ImGui::TableSetColumnIndex(3);
+                        ImGui::Text("%.4f", e.distance_m);
+                    }
+                    ImGui::EndTable();
+                }
+
+                ImGui::Spacing();
+                if (ImGui::Button("Clear all measurements"))
+                {
+                    ms.entries.clear();
+                    ms.pending_point.reset();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel pending"))
+                {
+                    ms.pending_point.reset();
+                }
+            }
+
+            ImGui::TreePop();
         }
     }
     ImGui::End();

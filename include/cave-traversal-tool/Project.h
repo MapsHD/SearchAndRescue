@@ -1,7 +1,10 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
+
+#include <glm/glm.hpp>
 
 #include <cave-traversal-tool/Camera.h>
 #include <cave-traversal-tool/PointCloud.h>
@@ -9,6 +12,24 @@
 
 #include <cave-traversal-tool/OpenGL/Buffer.h>
 #include <cave-traversal-tool/OpenGL/VertexArray.h>
+
+// A pair of 3-D world-space points picked by the user, with the computed distance
+struct MeasurementEntry
+{
+    glm::vec3 point_a{};
+    glm::vec3 point_b{};
+    float     distance_m = 0.0f; // ||b - a|| in metres
+};
+
+// Transient picking state (first point waiting for second click) + list of completed measurements
+struct MeasurementState
+{
+    // First point of the current in-progress measurement (nullopt = no pending point)
+    std::optional<glm::vec3> pending_point{};
+
+    // Completed measurement pairs
+    std::vector<MeasurementEntry> entries{};
+};
 
 // ProjectData : owns CPU and GPU side data for dataset and file paths
 struct ProjectData
@@ -67,6 +88,15 @@ struct ProjectData
 
     // Lock viewport 0 camera target to current trajectory pose
     bool lock_viewport0_target_to_trajectory = false;
+
+    // Measurements : Shift+LMB precise point picks and computed distances
+    MeasurementState measurements{};
+
+    // GPU side data : measurement lines (2 vertices per completed entry + optional pending point marker)
+    // Buffer holds Point vertices; capacity is 2 * MEASUREMENT_LINE_CAPACITY entries
+    static constexpr size_t MEASUREMENT_LINE_CAPACITY = 256;
+    Buffer*                 measurement_line_vbo      = nullptr;
+    VertexArray*            measurement_line_vao      = nullptr;
 
     // Multi-view rendering context : per-viewport cameras, camera modes, plane settings and window size
     MultiViewContext multi_view{};
