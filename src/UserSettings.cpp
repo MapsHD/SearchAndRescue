@@ -173,6 +173,13 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         }
         ImGui::Separator();
 
+        if (ImGui::TreeNode("Measurements"))
+        {
+            ImGui::Checkbox("Enable display", &user_settings.measurements.draw_enable);
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
+
         if (ImGui::TreeNode("Stretcher"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.stretcher.draw_enable);
@@ -271,6 +278,7 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
          {{"draw_enable", user_settings.trajectory.draw_enable},
           {"width", user_settings.trajectory.width},
           {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
+        {"measurements", {{"draw_enable", user_settings.measurements.draw_enable}}},
         {"stretcher",
          {{"draw_enable", user_settings.stretcher.draw_enable},
           {"draw_enable_bbox", user_settings.stretcher.draw_enable_bbox},
@@ -314,15 +322,16 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     if (settings.is_discarded() || file.bad())
         return false;
 
-    const json* opengl      = FindObject(settings, "opengl");
-    const json* io          = FindObject(settings, "io");
-    const json* origin      = FindObject(settings, "origin");
-    const json* target      = FindObject(settings, "target");
-    const json* trajectory  = FindObject(settings, "trajectory");
-    const json* stretcher   = FindObject(settings, "stretcher");
-    const json* point_cloud = FindObject(settings, "point_cloud");
-    const json* collision   = FindObject(settings, "collision");
-    if (!io || !origin || !target || !trajectory || !stretcher || !point_cloud || !collision)
+    const json* opengl       = FindObject(settings, "opengl");
+    const json* io           = FindObject(settings, "io");
+    const json* origin       = FindObject(settings, "origin");
+    const json* target       = FindObject(settings, "target");
+    const json* trajectory   = FindObject(settings, "trajectory");
+    const json* measurements = FindObject(settings, "measurements");
+    const json* stretcher    = FindObject(settings, "stretcher");
+    const json* point_cloud  = FindObject(settings, "point_cloud");
+    const json* collision    = FindObject(settings, "collision");
+    if (!io || !origin || !target || !trajectory || !measurements || !stretcher || !point_cloud || !collision)
         return false;
 
     UserSettings loaded;
@@ -340,6 +349,7 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*target, "width", loaded.target.width) &&
           ReadSetting(*trajectory, "draw_enable", loaded.trajectory.draw_enable) &&
           ReadSetting(*trajectory, "width", loaded.trajectory.width) &&
+          ReadSetting(*measurements, "draw_enable", loaded.measurements.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable", loaded.stretcher.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable_bbox", loaded.stretcher.draw_enable_bbox) &&
           ReadSetting(*stretcher, "bbox_width", loaded.stretcher.bbox_width) &&

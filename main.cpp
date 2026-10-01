@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <filesystem>
@@ -634,6 +634,7 @@ int main()
         }
 
         // MEASUREMENT LABELS : project each midpoint through VP0 and draw a 2-D distance label
+        if (_user_settings.measurements.draw_enable)
         {
             const MeasurementState& ms = _project_data.measurements;
 
@@ -919,7 +920,11 @@ int main()
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
 
                 int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
-                if (pick_idx >= 0)
+                if (pick_idx >= 0 && !_user_settings.measurements.draw_enable)
+                {
+                    spdlog::warn("Measurement picking blocked: measurement display is disabled");
+                }
+                else if (pick_idx >= 0)
                 {
                     Camera&  pick_cam = ctx.cameras[pick_idx];
                     Viewport vp       = ctx.viewport_for(pick_idx);
@@ -1099,6 +1104,7 @@ int main()
             }
 
             // MEASUREMENT LINES : draw completed entries as 3-D lines in world space
+            if (_user_settings.measurements.draw_enable)
             {
                 const MeasurementState& ms          = _project_data.measurements;
                 const size_t            entry_count = ms.entries.size();

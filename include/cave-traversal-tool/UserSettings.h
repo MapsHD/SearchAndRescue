@@ -64,6 +64,11 @@ struct UserSettings
 
     struct
     {
+        bool draw_enable = true;
+    } measurements;
+
+    struct
+    {
         bool      draw_enable      = true;
         bool      draw_enable_bbox = true;
         float     bbox_width       = 1.0f;

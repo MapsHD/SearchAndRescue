@@ -255,7 +255,11 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
             MeasurementState& ms = project_data.measurements;
 
             // Status line
-            if (ms.pending_point.has_value())
+            if (!user_settings.measurements.draw_enable)
+            {
+                ImGui::TextColored({1.0f, 0.5f, 0.0f, 1.0f}, "Measurement display and picking are disabled in UserSettings");
+            }
+            else if (ms.pending_point.has_value())
             {
                 const glm::vec3& p = ms.pending_point.value();
                 ImGui::TextColored({1.0f, 1.0f, 0.0f, 1.0f},
