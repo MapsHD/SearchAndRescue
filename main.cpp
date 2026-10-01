@@ -260,6 +260,16 @@ int main()
         int32_t width  = 0;
         int32_t height = 0;
         glfwGetWindowSize(window, &width, &height);
+        int32_t framebuffer_width  = 0;
+        int32_t framebuffer_height = 0;
+        glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+
+        if (width <= 0 || height <= 0 || framebuffer_width <= 0 || framebuffer_height <= 0)
+        {
+            glfwWaitEvents();
+            continue;
+        }
+
         ctx.window_width  = width;
         ctx.window_height = height;
 
@@ -270,7 +280,7 @@ int main()
             ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
         }
 
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, framebuffer_width, framebuffer_height);
 
         glClearColor(_user_settings.opengl.clear_color.x, _user_settings.opengl.clear_color.y, _user_settings.opengl.clear_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1109,7 +1119,11 @@ int main()
 
         auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
         {
-            glViewport(vp.x, vp.y, vp.w, vp.h);
+            const int pixel_x = static_cast<int>(static_cast<int64_t>(vp.x) * framebuffer_width / width);
+            const int pixel_y = static_cast<int>(static_cast<int64_t>(vp.y) * framebuffer_height / height);
+            const int pixel_w = static_cast<int>(static_cast<int64_t>(vp.x + vp.w) * framebuffer_width / width) - pixel_x;
+            const int pixel_h = static_cast<int>(static_cast<int64_t>(vp.y + vp.h) * framebuffer_height / height) - pixel_y;
+            glViewport(pixel_x, pixel_y, pixel_w, pixel_h);
 
             glm::mat4 projection = glm::perspectiveFov(glm::radians(cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
             glm::mat4 view       = cam.get_view();
