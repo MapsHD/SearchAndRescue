@@ -136,12 +136,12 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Origin"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.origin.draw_enable);
-            ImGui::BeginDisabled(!user_settings.origin.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.origin.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.origin.scale, 0.1f, 1.0f, FLT_MAX);
                 ImGui::DragFloat("Width", &user_settings.origin.width, 0.25f, 1.0f, 8.0f);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -149,13 +149,13 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Target"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.target.draw_enable);
-            ImGui::BeginDisabled(!user_settings.target.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.target.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.target.scale, 0.1f, 1.0f, FLT_MAX);
                 ImGui::DragFloat("Width", &user_settings.target.width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.target.color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -163,7 +163,7 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Trajectory"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.trajectory.draw_enable);
-            ImGui::BeginDisabled(!user_settings.trajectory.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.trajectory.draw_enable);
             {
                 const char* const display_modes = "Line strip\0Points\0";
                 int32_t           display_mode  = static_cast<int32_t>(user_settings.trajectory.display_mode);
@@ -176,7 +176,7 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                 ImGui::DragFloat("Point size", &user_settings.trajectory.point_size, 0.25f, 1.0f, 16.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.trajectory.color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -192,12 +192,12 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         {
             ImGui::Checkbox("Enable draw", &user_settings.stretcher.draw_enable);
             ImGui::Checkbox("Enable draw (BBOX)", &user_settings.stretcher.draw_enable_bbox);
-            ImGui::BeginDisabled(!user_settings.stretcher.draw_enable_bbox);
+            // ImGui::BeginDisabled(!user_settings.stretcher.draw_enable_bbox);
             {
                 ImGui::DragFloat("Width", &user_settings.stretcher.bbox_width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.stretcher.bbox_color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -229,22 +229,22 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             ImGui::DragFloat("BBOX width in OBB proximity", &user_settings.point_cloud.bbox_width_in_obb_proximity, 0.25f, 1.0f, 8.0f);
 
             ImGui::Checkbox("Enable draw BBOX (master)", &user_settings.point_cloud.draw_enable_bbox);
-            ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_bbox);
+            // ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_bbox);
             {
                 ImGui::Checkbox("Enable draw BBOX (outside)", &user_settings.point_cloud.draw_enable_bbox_out);
                 ImGui::Checkbox("Enable draw BBOX (in OBB)", &user_settings.point_cloud.draw_enable_bbox_in_obb);
                 ImGui::Checkbox("Enable draw BBOX (in OBB proximity)", &user_settings.point_cloud.draw_enable_bbox_in_obb_proximity);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
 
             ImGui::Checkbox("Enable draw PC (master)", &user_settings.point_cloud.draw_enable_pc);
-            ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_pc);
+            // ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_pc);
             {
                 ImGui::Checkbox("Enable draw PC (outside)", &user_settings.point_cloud.draw_enable_pc_out);
                 ImGui::Checkbox("Enable draw PC (in OBB)", &user_settings.point_cloud.draw_enable_pc_in_obb);
                 ImGui::Checkbox("Enable draw PC (in OBB proximity)", &user_settings.point_cloud.draw_enable_pc_in_obb_proximity);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
 
             ImGui::TreePop();
         }

@@ -335,7 +335,13 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
                         ImGui::TableSetColumnIndex(4);
                         ImGui::PushID(i);
-                        ImGui::ColorEdit3("##meas_color", glm::value_ptr(e.color), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+                        // ColorEdit3 expects a float[3] it can write through directly;
+                        // edit a local copy and copy back to keep the swatch in sync with the value
+                        float meas_color[3] = {e.color.x, e.color.y, e.color.z};
+                        if (ImGui::ColorEdit3("##meas_color", meas_color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
+                        {
+                            e.color = glm::vec3(meas_color[0], meas_color[1], meas_color[2]);
+                        }
                         ImGui::PopID();
 
                         ImGui::TableSetColumnIndex(5);
