@@ -355,12 +355,38 @@ int main()
                         ImGui::EndTooltip();
                     }
 
-                    // Right-aligned "Authors" text with tooltip on hover
+                    // Right-aligned "Authors" text with tooltip : table of contributors
                     ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
                     ImGui::Text("Authors");
-                    if (ImGui::IsItemHovered())
+                    if (ImGui::BeginItemTooltip())
                     {
-                        ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
+                        if (ImGui::BeginTable("##authors", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("ID");
+                            ImGui::TableSetupColumn("Name");
+                            ImGui::TableSetupColumn("E-mail");
+                            ImGui::TableSetupColumn("Role");
+                            ImGui::TableHeadersRow();
+
+                            auto author_row = [](const char* id, const char* name, const char* email, const char* role)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(id);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(name);
+                                ImGui::TableSetColumnIndex(2);
+                                ImGui::TextUnformatted(email);
+                                ImGui::TableSetColumnIndex(3);
+                                ImGui::TextUnformatted(role);
+                            };
+
+                            author_row("1", "Michal Wlasiuk", "michal.mwa87@gmail.com", "Project development");
+                            author_row("2", "Janusz Bedkowski", "januszbedkowski@gmail.com", "Project supervisor");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
                     }
                 }
 
