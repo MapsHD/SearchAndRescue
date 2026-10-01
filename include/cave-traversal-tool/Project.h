@@ -138,9 +138,6 @@ void load_environment_dialog(ProjectData& project_data, const UserSettings& user
 // Move trajectory index by +- given amount of meters along the trajectory (if possible)
 void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uint32_t& index, const float amount);
 
-// Moves camera target (keeping position - target offset) to the given pose position
-void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos);
-
 // ImGui panel for the project data : viewport layout / camera modes / plane controls,
 // file input / output, level of detail and trajectory playback controls
 void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settings, bool& open);

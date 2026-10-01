@@ -1,8 +1,17 @@
 #pragma once
 
+#include <array>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+// Camera projection type : perspective (fov based) or orthographic (parallel, box frustum)
+enum class ProjectionType : int
+{
+    PERSPECTIVE = 0,
+    ORTHOGRAPHIC
+};
 
 struct Camera
 {
@@ -15,16 +24,42 @@ struct Camera
     bool       panning     = false;
     glm::dvec2 last_cursor = {0.0, 0.0};
 
+    // Projection type of this camera
+    ProjectionType projection_type = ProjectionType::PERSPECTIVE;
+
+    // Perspective : vertical field of view in degrees
     float fov_y      = 45.0f;
     float viewport_w = 800;
     float viewport_h = 600;
+
+    // Perspective : near / far distances from the camera (near > 0)
+    // Orthographic : near / far can be negative, the box spans [near, far] along the view axis
     float near_plane = 0.1f;
     float far_plane  = 1000.0f;
 
+    // Orthographic only : view-space half extents of the projection box
+    // (symmetric around the view axis). The vertical extent is derived from
+    // ortho_half_height and the aspect ratio, matching the perspective framing.
+    float ortho_half_height = 5.0f;
+
+    // Orthographic zoom : multiplies the vertical world extent mapped to the viewport.
+    // > 1 zooms in ("magnifies"), < 1 zooms out. Used for scroll wheel / pan speed.
+    float ortho_zoom = 1.0f;
+
     glm::mat4 get_view() const;
-    void      rotate(double dx, double dy);
-    void      pan(double dx, double dy);
-    void      zoom(double scroll);
+
+    // Projection matrix for the current projection_type and the given viewport aspect ratio
+    glm::mat4 get_projection(float viewport_width, float viewport_height) const;
+
+    // Orthographic only : view-space half extents (width, height) of the projection box
+    std::array<float, 2> ortho_extents(float viewport_width, float viewport_height) const;
+
+    // World units per pixel at a given depth along the view axis (handles both projection types)
+    float world_units_per_pixel(float depth) const;
+
+    void rotate(double dx, double dy);
+    void pan(double dx, double dy);
+    void zoom(double scroll);
 };
 
 enum class CameraMode : int
@@ -101,6 +136,10 @@ struct MultiViewContext
 };
 
 glm::vec3 axis_camera_offset(CameraMode mode, float distance, const glm::mat3& orientation);
+
+// Hint whether the projection differs between viewports of a locked view :
+// when true the render pass must be repeated per viewport instead of once per camera
+bool any_projection_differs(const MultiViewContext& ctx, int active_count);
 
 void update_locked_camera(Camera& camera, CameraMode mode, float distance, const glm::vec3& target, const glm::mat3& orientation);
 void unlock_camera_to_free_orbit(Camera& camera, float fallback_distance = 5.0f);

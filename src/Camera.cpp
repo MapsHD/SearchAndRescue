@@ -1,6 +1,7 @@
 #include <cave-traversal-tool/Camera.h>
 
 #include <algorithm>
+#include <cmath>
 
 // clang-format off
 #include <GLFW/glfw3.h>
@@ -10,6 +11,51 @@
 glm::mat4 Camera::get_view() const
 {
     return glm::lookAt(position, target, up);
+}
+
+std::array<float, 2> Camera::ortho_extents(float viewport_width, float viewport_height) const
+{
+    const float aspect = viewport_height > 0.0f ? viewport_width / viewport_height : 1.0f;
+    const float half_h = std::max(1e-4f, ortho_half_height / std::max(1e-4f, ortho_zoom));
+    return {half_h * aspect, half_h};
+}
+
+glm::mat4 Camera::get_projection(float viewport_width, float viewport_height) const
+{
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        const auto [half_w, half_h] = ortho_extents(viewport_width, viewport_height);
+        return glm::ortho(-half_w, half_w, -half_h, half_h, near_plane, far_plane);
+    }
+
+    return glm::perspectiveFov(glm::radians(fov_y),
+                               std::max(1.0f, viewport_width), std::max(1.0f, viewport_height),
+                               near_plane, far_plane);
+}
+
+float Camera::world_units_per_pixel(float depth) const
+{
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        const float half_h = std::max(1e-4f, ortho_half_height / std::max(1e-4f, ortho_zoom));
+        return (2.0f * half_h) / std::max(1.0f, viewport_h);
+    }
+
+    const float d = std::max(0.01f, depth);
+    return 2.0f * d * std::tan(glm::radians(fov_y * 0.5f)) / std::max(1.0f, viewport_h);
+}
+
+bool any_projection_differs(const MultiViewContext& ctx, int active_count)
+{
+    for (int i = 1; i < active_count && i < MultiViewContext::MAX_CAMERAS; ++i)
+    {
+        if (ctx.cameras[i].projection_type != ctx.cameras[0].projection_type)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void Camera::rotate(double dx, double dy)
@@ -53,8 +99,22 @@ void Camera::zoom(double scroll)
 {
     glm::vec3 forward     = glm::normalize(target - position);
     float     zoom_amount = static_cast<float>(scroll) * 0.5f;
+    float     distance    = glm::length(target - position);
 
-    float distance     = glm::length(target - position);
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        // Orthographic : there is no perspective foreshortening, so dolly is faked by
+        // zooming the projection box. scroll > 0 (wheel up) magnifies, scroll < 0 zooms out.
+        const float factor = std::pow(0.9f, static_cast<float>(scroll));
+        ortho_zoom         = std::clamp(ortho_zoom * factor, 1e-3f, 1e4f);
+
+        // Keep the near / far box around the orbit target so the scene stays inside the frustum
+        const float half_depth = std::max(0.5f * (far_plane - near_plane), 1.0f);
+        near_plane             = distance - half_depth;
+        far_plane              = distance + half_depth;
+        return;
+    }
+
     float min_distance = 0.1f;
 
     float new_distance = distance - zoom_amount;

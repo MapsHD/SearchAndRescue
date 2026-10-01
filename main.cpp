@@ -537,11 +537,11 @@ int main()
             float    rect_w = static_cast<float>(vp0.w);
             float    rect_h = static_cast<float>(vp0.h);
 
-            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(ctx.cameras[0].fov_y), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
+            glm::mat4 gizmo_proj = ctx.cameras[0].get_projection(rect_w, rect_h);
             glm::mat4 gizmo_view = ctx.cameras[0].get_view();
 
             ImGuizmo::BeginFrame();
-            ImGuizmo::SetOrthographic(false);
+            ImGuizmo::SetOrthographic(ctx.cameras[0].projection_type == ProjectionType::ORTHOGRAPHIC);
             ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
             ImGuizmo::SetRect(rect_x, rect_y, rect_w, rect_h);
 
@@ -720,10 +720,7 @@ int main()
                         continue;
                     }
 
-                    const glm::mat4 proj = glm::perspectiveFov(
-                        glm::radians(cam.fov_y),
-                        static_cast<float>(vp.w), static_cast<float>(vp.h),
-                        cam.near_plane, cam.far_plane);
+                    const glm::mat4 proj = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
                     const glm::mat4 view = cam.get_view();
                     const glm::mat4 MVP  = proj * view;
 
@@ -810,7 +807,7 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_projection = pick_cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
                     glm::mat4 pick_view       = pick_cam.get_view();
 
                     glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
@@ -1019,7 +1016,7 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_projection = pick_cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
                     glm::mat4 pick_view       = pick_cam.get_view();
 
                     glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
@@ -1146,7 +1143,7 @@ int main()
             const int pixel_h = static_cast<int>(static_cast<int64_t>(vp.y + vp.h) * framebuffer_height / height) - pixel_y;
             glViewport(pixel_x, pixel_y, pixel_w, pixel_h);
 
-            glm::mat4 projection = glm::perspectiveFov(glm::radians(cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
+            glm::mat4 projection = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
             glm::mat4 view       = cam.get_view();
             glm::mat4 MVP        = projection * view;
 
@@ -1435,6 +1432,16 @@ int main()
         for (int i = 0; i < count; ++i)
         {
             draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
+        }
+
+        // When viewports use different projection types the camera pass must be repeated so the
+        // projected pixel sizes used for LOD selection match each viewport's projection.
+        if (any_projection_differs(ctx, count))
+        {
+            for (int i = count; i < MultiViewContext::MAX_CAMERAS; ++i)
+            {
+                draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
+            }
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
