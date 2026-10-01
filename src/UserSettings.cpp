@@ -136,12 +136,12 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Origin"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.origin.draw_enable);
-            ImGui::BeginDisabled(!user_settings.origin.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.origin.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.origin.scale, 0.1f, 1.0f, FLT_MAX);
                 ImGui::DragFloat("Width", &user_settings.origin.width, 0.25f, 1.0f, 8.0f);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -149,13 +149,13 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Target"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.target.draw_enable);
-            ImGui::BeginDisabled(!user_settings.target.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.target.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.target.scale, 0.1f, 1.0f, FLT_MAX);
                 ImGui::DragFloat("Width", &user_settings.target.width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.target.color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -163,12 +163,27 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         if (ImGui::TreeNode("Trajectory"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.trajectory.draw_enable);
-            ImGui::BeginDisabled(!user_settings.trajectory.draw_enable);
+            // ImGui::BeginDisabled(!user_settings.trajectory.draw_enable);
             {
+                const char* const display_modes = "Line strip\0Points\0";
+                int32_t           display_mode  = static_cast<int32_t>(user_settings.trajectory.display_mode);
+                if (ImGui::Combo("Display mode", &display_mode, display_modes))
+                {
+                    user_settings.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(display_mode);
+                }
+
                 ImGui::DragFloat("Width", &user_settings.trajectory.width, 0.25f, 1.0f, 8.0f);
+                ImGui::DragFloat("Point size", &user_settings.trajectory.point_size, 0.25f, 1.0f, 16.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.trajectory.color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
+
+        if (ImGui::TreeNode("Measurements"))
+        {
+            ImGui::Checkbox("Enable display", &user_settings.measurements.draw_enable);
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -177,12 +192,12 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         {
             ImGui::Checkbox("Enable draw", &user_settings.stretcher.draw_enable);
             ImGui::Checkbox("Enable draw (BBOX)", &user_settings.stretcher.draw_enable_bbox);
-            ImGui::BeginDisabled(!user_settings.stretcher.draw_enable_bbox);
+            // ImGui::BeginDisabled(!user_settings.stretcher.draw_enable_bbox);
             {
                 ImGui::DragFloat("Width", &user_settings.stretcher.bbox_width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.stretcher.bbox_color));
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
             ImGui::TreePop();
         }
         ImGui::Separator();
@@ -214,22 +229,22 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             ImGui::DragFloat("BBOX width in OBB proximity", &user_settings.point_cloud.bbox_width_in_obb_proximity, 0.25f, 1.0f, 8.0f);
 
             ImGui::Checkbox("Enable draw BBOX (master)", &user_settings.point_cloud.draw_enable_bbox);
-            ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_bbox);
+            // ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_bbox);
             {
                 ImGui::Checkbox("Enable draw BBOX (outside)", &user_settings.point_cloud.draw_enable_bbox_out);
                 ImGui::Checkbox("Enable draw BBOX (in OBB)", &user_settings.point_cloud.draw_enable_bbox_in_obb);
                 ImGui::Checkbox("Enable draw BBOX (in OBB proximity)", &user_settings.point_cloud.draw_enable_bbox_in_obb_proximity);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
 
             ImGui::Checkbox("Enable draw PC (master)", &user_settings.point_cloud.draw_enable_pc);
-            ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_pc);
+            // ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_pc);
             {
                 ImGui::Checkbox("Enable draw PC (outside)", &user_settings.point_cloud.draw_enable_pc_out);
                 ImGui::Checkbox("Enable draw PC (in OBB)", &user_settings.point_cloud.draw_enable_pc_in_obb);
                 ImGui::Checkbox("Enable draw PC (in OBB proximity)", &user_settings.point_cloud.draw_enable_pc_in_obb_proximity);
             }
-            ImGui::EndDisabled();
+            // ImGui::EndDisabled();
 
             ImGui::TreePop();
         }
@@ -270,7 +285,10 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
         {"trajectory",
          {{"draw_enable", user_settings.trajectory.draw_enable},
           {"width", user_settings.trajectory.width},
+          {"point_size", user_settings.trajectory.point_size},
+          {"display_mode", static_cast<int32_t>(user_settings.trajectory.display_mode)},
           {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
+        {"measurements", {{"draw_enable", user_settings.measurements.draw_enable}}},
         {"stretcher",
          {{"draw_enable", user_settings.stretcher.draw_enable},
           {"draw_enable_bbox", user_settings.stretcher.draw_enable_bbox},
@@ -314,15 +332,16 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     if (settings.is_discarded() || file.bad())
         return false;
 
-    const json* opengl      = FindObject(settings, "opengl");
-    const json* io          = FindObject(settings, "io");
-    const json* origin      = FindObject(settings, "origin");
-    const json* target      = FindObject(settings, "target");
-    const json* trajectory  = FindObject(settings, "trajectory");
-    const json* stretcher   = FindObject(settings, "stretcher");
-    const json* point_cloud = FindObject(settings, "point_cloud");
-    const json* collision   = FindObject(settings, "collision");
-    if (!io || !origin || !target || !trajectory || !stretcher || !point_cloud || !collision)
+    const json* opengl       = FindObject(settings, "opengl");
+    const json* io           = FindObject(settings, "io");
+    const json* origin       = FindObject(settings, "origin");
+    const json* target       = FindObject(settings, "target");
+    const json* trajectory   = FindObject(settings, "trajectory");
+    const json* measurements = FindObject(settings, "measurements");
+    const json* stretcher    = FindObject(settings, "stretcher");
+    const json* point_cloud  = FindObject(settings, "point_cloud");
+    const json* collision    = FindObject(settings, "collision");
+    if (!io || !origin || !target || !trajectory || !measurements || !stretcher || !point_cloud || !collision)
         return false;
 
     UserSettings loaded;
@@ -340,6 +359,9 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*target, "width", loaded.target.width) &&
           ReadSetting(*trajectory, "draw_enable", loaded.trajectory.draw_enable) &&
           ReadSetting(*trajectory, "width", loaded.trajectory.width) &&
+          ReadSetting(*trajectory, "point_size", loaded.trajectory.point_size) &&
+          ReadSetting(*trajectory, "display_mode", loaded.trajectory.display_mode_value) &&
+          ReadSetting(*measurements, "draw_enable", loaded.measurements.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable", loaded.stretcher.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable_bbox", loaded.stretcher.draw_enable_bbox) &&
           ReadSetting(*stretcher, "bbox_width", loaded.stretcher.bbox_width) &&
@@ -366,6 +388,10 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
     Vec3FromJSON(collision, "points_color", loaded.collision.points_color);
+
+    if (loaded.trajectory.display_mode_value < 0 || loaded.trajectory.display_mode_value > 1)
+        return false;
+    loaded.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(loaded.trajectory.display_mode_value);
 
     if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
         return false;

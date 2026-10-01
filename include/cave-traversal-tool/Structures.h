@@ -33,6 +33,13 @@ struct Point
     glm::vec3 position = {};
 };
 
+// Position + RGB colour vertex, used by geometry with per-vertex colours (measurement lines)
+struct ColoredVertex
+{
+    glm::vec3 position = {};
+    glm::vec3 color    = {};
+};
+
 struct PointIntensity
 {
     glm::vec3 position  = {};

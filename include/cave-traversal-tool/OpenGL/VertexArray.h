@@ -34,6 +34,13 @@ inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_l
 }
 
 template <>
+inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_layout<ColoredVertex>()
+{
+    return {{0, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(ColoredVertex), offsetof(ColoredVertex, position)},
+            {1, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(ColoredVertex), offsetof(ColoredVertex, color)}};
+}
+
+template <>
 inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_layout<PointIntensity>()
 {
     return {{0, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(PointIntensity), offsetof(PointIntensity, position)},
@@ -65,5 +72,6 @@ public:
     void Unbind();
 
     void DrawArray(const uint32_t mode, const uint32_t vertex_count);
+    void DrawArray(const uint32_t mode, const uint32_t first, const uint32_t vertex_count);
     void DrawElements(const uint32_t mode, const uint32_t index_count, const uint32_t instance_count, const uint32_t base_instance);
 };

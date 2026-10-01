@@ -1,13 +1,41 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
+#include <glm/glm.hpp>
+
+#include <cave-traversal-tool/Camera.h>
 #include <cave-traversal-tool/PointCloud.h>
 #include <cave-traversal-tool/UserSettings.h>
 
 #include <cave-traversal-tool/OpenGL/Buffer.h>
 #include <cave-traversal-tool/OpenGL/VertexArray.h>
+
+// A pair of 3-D world-space points picked by the user, with the computed distance
+struct MeasurementEntry
+{
+    glm::vec3 point_a{};
+    glm::vec3 point_b{};
+    float     distance_m = 0.0f; // ||b - a|| in metres
+
+    // Per-measurement colour (line + distance label)
+    glm::vec3 color = glm::vec3(0.0f, 1.0f, 1.0f); // cyan by default
+
+    // Per-measurement line width (1 to 8, default 2)
+    float line_width = 2.0f;
+};
+
+// Transient picking state (first point waiting for second click) + list of completed measurements
+struct MeasurementState
+{
+    // First point of the current in-progress measurement (nullopt = no pending point)
+    std::optional<glm::vec3> pending_point{};
+
+    // Completed measurement pairs
+    std::vector<MeasurementEntry> entries{};
+};
 
 // ProjectData : owns CPU and GPU side data for dataset and file paths
 struct ProjectData
@@ -55,10 +83,6 @@ struct ProjectData
     Buffer*      collision_points_vbo = nullptr;
     VertexArray* collision_points_vao = nullptr;
 
-    // Level of detail : fixed LOD index vs automatic LOD from distance
-    bool    use_fixed_lod   = true;
-    int32_t fixed_lod_index = 0;
-
     // Trajectory playback state
     bool     trajectory_index_auto_play           = false;
     int32_t  trajectory_index_auto_play_increment = 1;
@@ -66,6 +90,18 @@ struct ProjectData
 
     // Lock viewport 0 camera target to current trajectory pose
     bool lock_viewport0_target_to_trajectory = false;
+
+    // Measurements : Shift+LMB precise point picks and computed distances
+    MeasurementState measurements{};
+
+    // GPU side data : measurement lines (2 vertices per completed entry + optional pending point marker)
+    // Buffer holds ColoredVertex vertices; capacity is 2 * MEASUREMENT_LINE_CAPACITY entries
+    static constexpr size_t MEASUREMENT_LINE_CAPACITY = 256;
+    Buffer*                 measurement_line_vbo      = nullptr;
+    VertexArray*            measurement_line_vao      = nullptr;
+
+    // Multi-view rendering context : per-viewport cameras, camera modes, plane settings and window size
+    MultiViewContext multi_view{};
 };
 
 // Size of vector contents in bytes (helper for OpenGL buffer uploads)
@@ -101,3 +137,10 @@ void load_environment_dialog(ProjectData& project_data, const UserSettings& user
 
 // Move trajectory index by +- given amount of meters along the trajectory (if possible)
 void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uint32_t& index, const float amount);
+
+// Moves camera target (keeping position - target offset) to the given pose position
+void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos);
+
+// ImGui panel for the project data : viewport layout / camera modes / plane controls,
+// file input / output, level of detail and trajectory playback controls
+void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settings, bool& open);

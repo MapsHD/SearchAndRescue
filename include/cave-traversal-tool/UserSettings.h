@@ -23,6 +23,12 @@ enum class ColorMapType : int32_t
     Inferno = 4
 };
 
+enum class TrajectoryDisplayMode : int32_t
+{
+    LineStrip = 0,
+    Points    = 1
+};
+
 struct UserSettings
 {
     struct
@@ -59,8 +65,19 @@ struct UserSettings
     {
         bool      draw_enable = true;
         float     width       = 1.0f;
+        float     point_size  = 2.0f;
         glm::vec3 color       = {1.0f, 1.0f, 1.0f};
+
+        TrajectoryDisplayMode display_mode = TrajectoryDisplayMode::LineStrip;
+
+        // helper for JSON loading; never used directly
+        int32_t display_mode_value = 0;
     } trajectory;
+
+    struct
+    {
+        bool draw_enable = true;
+    } measurements;
 
     struct
     {

@@ -1,4 +1,6 @@
-﻿#include <cctype>
+﻿#include <algorithm>
+#include <array>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -23,6 +25,7 @@
 
 #include <cave-traversal-tool/Camera.h>
 #include <cave-traversal-tool/Project.h>
+#include <cave-traversal-tool/ProjectGui.h>
 #include <cave-traversal-tool/Structures.h>
 
 #include <cave-traversal-tool/OpenGL/Buffer.h>
@@ -159,7 +162,7 @@ int main()
     glfwSetWindowSizeCallback(window, size_callback);
     glfwSetDropCallback(window, drop_callback);
 
-    MultiViewContext ctx{};
+    MultiViewContext& ctx   = _project_data.multi_view;
     ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
     ctx.cameras[1].position = glm::vec3(-10.0f, 10.0f, 10.0f);
     ctx.cameras[2].position = glm::vec3(10.0f, -10.0f, 10.0f);
@@ -170,7 +173,7 @@ int main()
         ctx.cameras[i].viewport_w = static_cast<float>(vp.w);
         ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
     }
-    glfwSetWindowUserPointer(window, &ctx);
+    glfwSetWindowUserPointer(window, &_project_data.multi_view);
 
     glfwMakeContextCurrent(window);
 
@@ -193,9 +196,11 @@ int main()
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
     Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
+    Program* colored_line_program           = make_program(GetProgramShaderSources_ColoredLine());
 
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
+    const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
     Buffer*      origin_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
     VertexArray* origin_vao    = new VertexArray(origin_buffer, false, nullptr, false, layout_color_point);
@@ -206,6 +211,10 @@ int main()
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
     _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
     _project_data.collision_points_vao = new VertexArray(_project_data.collision_points_vbo, false, nullptr, false, layout_point);
+
+    // Measurement lines : pre-allocated GPU buffer, 2 coloured vertices per completed entry
+    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
+    _project_data.measurement_line_vao = new VertexArray(_project_data.measurement_line_vbo, false, nullptr, false, layout_colored);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -220,6 +229,33 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+
+        // Input state : query keys and mouse buttons once per frame and derive bools
+        const bool g_key   = (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS);
+        const bool s_key   = (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS);
+        const bool ctrl    = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
+        const bool alt     = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
+        const bool shift   = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ||
+                             (glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+        const bool mouse_l = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+        const bool mouse_r = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
+
+        static bool s_prev       = false;
+        static bool mouse_l_prev = false;
+        static bool mouse_r_prev = false;
+
+        const bool s_key_clicked   = s_key && !s_prev;         // one-shot S press
+        const bool new_left_click  = mouse_l && !mouse_l_prev; // released -> pressed
+        const bool new_right_click = mouse_r && !mouse_r_prev; // released -> pressed
+
+        // Shift + S : toggle continuous snap of viewport 0 camera target to the current trajectory pose
+        static bool shift_s_prev    = false;
+        const bool  shift_s_clicked = shift && s_key && !shift_s_prev;
+        shift_s_prev                = shift && s_key;
+
+        s_prev       = s_key;
+        mouse_l_prev = mouse_l;
+        mouse_r_prev = mouse_r;
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -286,13 +322,83 @@ int main()
                     ImGui::EndMenu();
                 }
 
-                // Right-aligned "Authors" text with tooltip on hover
-                const float authors_text_width = ImGui::CalcTextSize("Authors").x;
-                ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
-                ImGui::Text("Authors");
-                if (ImGui::IsItemHovered())
+                // Right-aligned "Shortcuts" text with tooltip : table of all keyboard / mouse controls
                 {
-                    ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
+                    const float authors_text_width = ImGui::CalcTextSize("Authors").x;
+                    const float shortcuts_width    = ImGui::CalcTextSize("Shortcuts").x;
+
+                    // Just for nicer looks
+                    const float artificial_padding = 10.0f;
+
+                    ImGui::SameLine(ImGui::GetWindowWidth() - artificial_padding - authors_text_width - shortcuts_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                    ImGui::Text("Shortcuts");
+                    if (ImGui::BeginItemTooltip())
+                    {
+                        if (ImGui::BeginTable("##shortcuts", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("Input");
+                            ImGui::TableSetupColumn("Description");
+                            ImGui::TableHeadersRow();
+
+                            auto shortcut_row = [](const char* input, const char* description)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(input);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(description);
+                            };
+
+                            shortcut_row("LMB drag", "Orbit the camera around its target");
+                            shortcut_row("RMB drag", "Pan the camera");
+                            shortcut_row("Scroll", "Zoom (hold Shift for faster zoom)");
+                            shortcut_row("Shift + RMB drag", "Fast panning");
+                            shortcut_row("G", "Show stretcher gizmo : move / rotate current trajectory pose");
+                            shortcut_row("S", "Snap viewport 1 camera target to current trajectory pose");
+                            shortcut_row("Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
+                            shortcut_row("Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
+                            shortcut_row("Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
+                            shortcut_row("Alt + LMB", "Pick trajectory point : sets the current trajectory index");
+                            shortcut_row("Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
+                    }
+
+                    // Right-aligned "Authors" text with tooltip : table of contributors
+                    ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                    ImGui::Text("Authors");
+                    if (ImGui::BeginItemTooltip())
+                    {
+                        if (ImGui::BeginTable("##authors", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("ID");
+                            ImGui::TableSetupColumn("Name");
+                            ImGui::TableSetupColumn("E-mail");
+                            ImGui::TableSetupColumn("Role");
+                            ImGui::TableHeadersRow();
+
+                            auto author_row = [](const char* id, const char* name, const char* email, const char* role)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(id);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(name);
+                                ImGui::TableSetColumnIndex(2);
+                                ImGui::TextUnformatted(email);
+                                ImGui::TableSetColumnIndex(3);
+                                ImGui::TextUnformatted(role);
+                            };
+
+                            author_row("1", "Michal Wlasiuk", "michal.mwa87@gmail.com", "Project development");
+                            author_row("2", "Janusz Bedkowski", "januszbedkowski@gmail.com", "Project supervisor");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
+                    }
                 }
 
                 ImGui::EndMenuBar();
@@ -303,243 +409,7 @@ int main()
         {
             if (_gui_state.display_project_tab)
             {
-                if (ImGui::Begin("Application", &_gui_state.display_project_tab))
-                {
-                    if (ImGui::TreeNode("Viewport"))
-                    {
-                        int count = static_cast<int>(ctx.active_count);
-                        if (ImGui::RadioButton("1 (single)", &count, 1))
-                        {
-                            ctx.active_count = ViewportCount::ONE;
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::RadioButton("2 (L/R split)", &count, 2))
-                        {
-                            ctx.active_count = ViewportCount::TWO;
-                        }
-                        ImGui::SameLine();
-                        if (ImGui::RadioButton("4 (2x2 grid)", &count, 4))
-                        {
-                            ctx.active_count = ViewportCount::FOUR;
-                        }
-
-                        static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
-
-                        for (int i = 1; i <= 3; ++i)
-                        {
-                            if (i >= static_cast<int>(ctx.active_count))
-                            {
-                                continue;
-                            }
-
-                            ImGui::Separator();
-                            ImGui::Text("Viewport %d", i + 1);
-
-                            int mode = static_cast<int>(ctx.camera_modes[i]);
-                            if (ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
-                            {
-                                CameraMode old_mode = ctx.camera_modes[i];
-                                ctx.camera_modes[i] = static_cast<CameraMode>(mode);
-                                if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
-                                {
-                                    if (ctx.symmetric_planes[i])
-                                    {
-                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                                    }
-                                    else
-                                    {
-                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
-                                    }
-                                }
-                                else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
-                                {
-                                    ctx.cameras[i].near_plane = 0.1f;
-                                    ctx.cameras[i].far_plane  = 1000.0f;
-                                    unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
-                                }
-                            }
-                            ImGui::SameLine();
-                            ImGui::Text("camera");
-
-                            if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
-                            {
-                                // Plane control mode : symmetric (single slider, planes derived from distance) vs asymmetric (independent planes)
-                                const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
-                                int         plane_mode         = ctx.symmetric_planes[i] ? 0 : 1;
-                                if (ImGui::Combo(("plane_mode##" + std::to_string(i)).c_str(), &plane_mode, plane_mode_names, 2))
-                                {
-                                    ctx.symmetric_planes[i] = (plane_mode == 0);
-
-                                    if (ctx.symmetric_planes[i])
-                                    {
-                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                                    }
-                                }
-
-                                if (ctx.symmetric_planes[i])
-                                {
-                                    // Symmetrical : single slider controls camera distance from the stretcher pose,
-                                    // planes are enforced each frame as distance -+ symmetric_plane_offset
-                                    ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
-
-                                    // ImGui::BeginDisabled(true);
-                                    // ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
-                                    // ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 10000.0f, "%.3f");
-                                    // ImGui::EndDisabled();
-
-                                    ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f");
-
-                                    if (ImGui::Button(("Reset offset (1.25m)##" + std::to_string(i)).c_str()))
-                                    {
-                                        ctx.symmetric_plane_offset[i] = 1.25f;
-                                    }
-                                }
-                                else
-                                {
-                                    // Asymmetrical : independent distance / near / far control (previous behaviour)
-                                    float old_dist = ctx.view_axis_distance[i];
-                                    if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
-                                    {
-                                        float delta               = ctx.view_axis_distance[i] - old_dist;
-                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
-                                        ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
-                                    }
-
-                                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                                    if (ctx.cameras[i].near_plane < 0.01f)
-                                    {
-                                        ctx.cameras[i].near_plane = 0.01f;
-                                    }
-                                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                                    {
-                                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                                    }
-
-                                    if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
-                                    {
-                                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
-                                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
-                                    }
-                                }
-                            }
-                        }
-
-                        ImGui::TreePop();
-                    }
-
-                    ImGui::Separator();
-                    if (ImGui::TreeNode("File input / output"))
-                    {
-                        if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
-                        {
-                            load_trajectory_dialog(_project_data, _user_settings);
-                        }
-                        ImGui::Text("%s", _project_data.trajectory_path.empty() ? "(none)" : _project_data.trajectory_path.c_str());
-
-                        ImGui::Separator();
-
-                        if (ImGui::Button("Load object", ImVec2(200.0f, 0.0f)))
-                        {
-                            load_object_dialog(_project_data);
-                        }
-                        ImGui::Text("%s", _project_data.object_path.empty() ? "(none)" : _project_data.object_path.c_str());
-
-                        ImGui::Separator();
-
-                        if (ImGui::Button("Load environment", ImVec2(200.0f, 0.0f)))
-                        {
-                            load_environment_dialog(_project_data, _user_settings);
-                        }
-                        ImGui::Text("%s", _project_data.environment_path.empty() ? "(none)" : _project_data.environment_path.c_str());
-
-                        ImGui::TreePop();
-                    }
-
-                    ImGui::Separator();
-                    if (ImGui::TreeNode("Level of Detail (LOD)"))
-                    {
-                        ImGui::Checkbox("use_fixed_lod", &_project_data.use_fixed_lod);
-
-                        const int32_t max_lod_index = _project_data.max_lod_count > 0 ? static_cast<int32_t>(_project_data.max_lod_count - 1) : 0;
-                        ImGui::BeginDisabled(!_project_data.use_fixed_lod);
-                        ImGui::SliderInt("fixed_lod_index", &_project_data.fixed_lod_index, 0, max_lod_index);
-                        ImGui::EndDisabled();
-                        ImGui::TreePop();
-                    }
-
-                    ImGui::Separator();
-                    if (ImGui::TreeNode("Trajectory"))
-                    {
-                        if (_project_data.trajectory_orientations_mat33.size())
-                        {
-                            const uint32_t zero                  = 0U;
-                            const uint32_t max_orientation_index = static_cast<uint32_t>(_project_data.trajectory_orientations_mat33.size()) - 1U;
-
-                            ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(_project_data.trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(_project_data.trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
-                            ImGui::Checkbox("trajectory_index_auto_play", &_project_data.trajectory_index_auto_play);
-                            ImGui::DragInt("trajectory_index_auto_play_increment", &_project_data.trajectory_index_auto_play_increment, 1.0f, 1, INT32_MAX);
-                            ImGui::DragScalar("trajectory_index", ImGuiDataType_U32, &_project_data.trajectory_index, 1.0f, &zero, &max_orientation_index);
-
-                            // Trajectory traversal buttons : move +- given meters along the trajectory
-                            if (ImGui::Button("- 1 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -1.0f);
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("- 5 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -5.0f);
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("- 10 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, -10.0f);
-                            }
-
-                            if (ImGui::Button("+ 1 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +1.0f);
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("+ 5 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +5.0f);
-                            }
-                            ImGui::SameLine();
-                            if (ImGui::Button("+ 10 m"))
-                            {
-                                move_trajectory_index_by_distance(_project_data.trajectory_positions, _project_data.trajectory_index, +10.0f);
-                            }
-                        }
-                        else
-                        {
-                            ImGui::TextColored({1.0f, 0.0f, 0.0f, 1.0f}, "Can not set index of trajectory pose - load trajectory!");
-                        }
-
-                        ImGui::TreePop();
-                    }
-
-                    ImGui::Separator();
-                    ImGui::Checkbox("Lock target to trajectory", &_project_data.lock_viewport0_target_to_trajectory);
-                    ImGui::SameLine();
-                    if (ImGui::Button("Snap"))
-                    {
-                        if (_project_data.trajectory_positions.size())
-                        {
-                            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
-                        }
-                    }
-                    if (_project_data.lock_viewport0_target_to_trajectory)
-                    {
-                        ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
-                    }
-                }
-                ImGui::End();
+                ProjectDataImGUI(_project_data, _user_settings, _gui_state.display_project_tab);
             }
 
             if (_gui_state.display_user_settings_tab)
@@ -635,7 +505,7 @@ int main()
             }
         }
 
-        if (glfwGetKey(window, GLFW_KEY_G))
+        if (g_key)
         {
             glm::vec3 stretcher_position    = glm::vec3(0.0f);
             glm::mat3 stretcher_orientation = glm::mat3(1.0f);
@@ -657,7 +527,7 @@ int main()
             float    rect_w = static_cast<float>(vp0.w);
             float    rect_h = static_cast<float>(vp0.h);
 
-            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(55.0f), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
+            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(ctx.cameras[0].fov_y), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
             glm::mat4 gizmo_view = ctx.cameras[0].get_view();
 
             ImGuizmo::BeginFrame();
@@ -697,12 +567,52 @@ int main()
                 glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
         }
+
+        // One-time snap of viewport 0 camera target to the current trajectory pose (S key)
+        if (s_key_clicked && !shift && _project_data.trajectory_positions.size() && !_project_data.lock_viewport0_target_to_trajectory)
+        {
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
+        }
+
+        // Shift + S : toggle continuous snap on / off
+        if (shift_s_clicked && _project_data.trajectory_positions.size())
+        {
+            _project_data.lock_viewport0_target_to_trajectory = !_project_data.lock_viewport0_target_to_trajectory;
+            spdlog::info("Continuous snap to trajectory pose {}", _project_data.lock_viewport0_target_to_trajectory ? "enabled" : "disabled");
+        }
+
+        const int count = static_cast<int>(ctx.active_count);
+
+        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
+        {
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
+        }
+
+        for (int i = 0; i < count; ++i)
+        {
+            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+            {
+                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
+
+                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                if (ctx.symmetric_planes[i])
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
+            }
+            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
+            {
+                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
+            }
+        }
+
         // VIEWPORT DIVIDER LINES
         {
             int vp_count = static_cast<int>(ctx.active_count);
             if (vp_count >= 2)
             {
-                ImDrawList* dl  = ImGui::GetBackgroundDrawList();
+                ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
                 ImU32       col = IM_COL32(180, 180, 180, 200);
 
                 // Vertical center line for modes 2 and 4
@@ -724,21 +634,135 @@ int main()
             }
         }
 
+        // WORLD AXES : a camera-relative orientation indicator in the bottom-left of each viewport.
+        {
+            ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+            for (int i = 0; i < count; ++i)
+            {
+                const Viewport vp = ctx.viewport_for(i);
+                if (!ctx.draw_axes_overlay[i] || vp.w <= 0 || vp.h <= 0)
+                    continue;
+
+                const float     box_w = static_cast<float>(vp.w) * ctx.axes_overlay_size[i];
+                const float     box_h = static_cast<float>(vp.h) * ctx.axes_overlay_size[i];
+                const ImVec2    box_min(static_cast<float>(vp.x) + 6.0f,
+                                        static_cast<float>(height - vp.y) - box_h - 6.0f);
+                const ImVec2    box_max(box_min.x + box_w, box_min.y + box_h);
+                const ImVec2    center((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
+                const float     axis_length = std::min(box_w, box_h) * 0.32f;
+                const glm::mat3 view_rotation(ctx.cameras[i].get_view());
+
+                struct Axis
+                {
+                    ImVec2      end;
+                    float       depth;
+                    ImU32       color;
+                    const char* label;
+                };
+                std::array<Axis, 3> axes{};
+                const glm::vec3     directions[] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+                const ImU32         colors[]     = {IM_COL32(255, 90, 90, 230), IM_COL32(90, 255, 90, 230), IM_COL32(100, 155, 255, 230)};
+                const char*         labels[]     = {"X", "Y", "Z"};
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const glm::vec3 direction = view_rotation * directions[axis];
+                    axes[axis]                = {ImVec2(center.x + direction.x * axis_length,
+                                                        center.y - direction.y * axis_length),
+                                                 direction.z, colors[axis], labels[axis]};
+                }
+                // Draw farther axes first so the ones facing the camera remain legible.
+                std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b)
+                          { return a.depth < b.depth; });
+
+                dl->PushClipRect(box_min, box_max, true);
+                dl->AddRectFilled(box_min, box_max, IM_COL32(12, 12, 12, 120), 4.0f);
+                for (const Axis& axis : axes)
+                {
+                    dl->AddLine(center, axis.end, axis.color, 2.0f);
+                    dl->AddCircleFilled(axis.end, 2.0f, axis.color);
+                    dl->AddText(ImVec2(axis.end.x + 3.0f, axis.end.y - 7.0f), axis.color, axis.label);
+                }
+                dl->PopClipRect();
+            }
+        }
+
+        // MEASUREMENT LABELS : project each midpoint through VP0 and draw a 2-D distance label
+        if (_user_settings.measurements.draw_enable)
+        {
+            const MeasurementState& ms = _project_data.measurements;
+
+            if (!ms.entries.empty())
+            {
+                const Camera&  cam0 = ctx.cameras[0];
+                const Viewport vp0  = ctx.viewport_for(0);
+
+                const glm::mat4 proj0 = glm::perspectiveFov(
+                    glm::radians(cam0.fov_y),
+                    static_cast<float>(vp0.w), static_cast<float>(vp0.h),
+                    cam0.near_plane, cam0.far_plane);
+                const glm::mat4 view0 = cam0.get_view();
+                const glm::mat4 MVP0  = proj0 * view0;
+
+                ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+
+                // Top-left corner of VP0 in ImGui (screen) coordinates
+                // OpenGL vp0.y is measured from the bottom, so screen_top = height - (vp0.y + vp0.h)
+                const float vp_screen_x = static_cast<float>(vp0.x);
+                const float vp_screen_y = static_cast<float>(height - (vp0.y + vp0.h));
+
+                for (size_t i = 0; i < ms.entries.size(); ++i)
+                {
+                    const MeasurementEntry& e = ms.entries[i];
+
+                    const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
+                    const glm::vec4 clip     = MVP0 * glm::vec4(midpoint, 1.0f);
+
+                    // Behind the camera → skip
+                    if (clip.w <= 0.0f)
+                    {
+                        continue;
+                    }
+
+                    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+                    // Outside the NDC cube → skip
+                    if (ndc.x < -1.0f || ndc.x > 1.0f ||
+                        ndc.y < -1.0f || ndc.y > 1.0f ||
+                        ndc.z < -1.0f || ndc.z > 1.0f)
+                    {
+                        continue;
+                    }
+
+                    // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
+                    const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp0.w);
+                    const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp0.h);
+
+                    char label[64];
+                    std::snprintf(label, sizeof(label), "%zu: %.4f m", i + 1, e.distance_m);
+
+                    const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
+                    const ImVec2 text_size = ImGui::CalcTextSize(label);
+
+                    // Label : near-black background with white text, independent of the measurement line colour
+                    dl->AddRectFilled(
+                        ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
+                        ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
+                        IM_COL32(10, 10, 10, 220),
+                        2.0f);
+
+                    dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+                }
+            }
+        }
+
         ImGui::Render();
 
         // PICKING POINT CLOUD
         {
-            static bool prev_mouse_pressed = false;
-
-            bool ctrl_pressed  = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
-            bool alt_pressed   = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
-            bool mouse_pressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-
             // Trigger once when mouse goes from released -> pressed, while Ctrl (bucket pick) or Alt (trajectory pick) is held
-            bool new_click     = mouse_pressed && !prev_mouse_pressed && (ctrl_pressed || alt_pressed);
-            prev_mouse_pressed = mouse_pressed;
+            bool new_click = new_left_click && (ctrl || alt);
 
-            if (new_click && !ImGui::GetIO().WantCaptureMouse)
+            if ((new_click || new_right_click) && !ImGui::GetIO().WantCaptureMouse)
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
@@ -755,7 +779,7 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
                     glm::mat4 pick_view       = pick_cam.get_view();
 
                     glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
@@ -767,7 +791,7 @@ int main()
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
-                    if (alt_pressed)
+                    if (alt)
                     {
                         // Pick closest trajectory point to the cast ray (within 0.25 m of the ray)
                         const float TRAJECTORY_PICK_RADIUS = 0.25f;
@@ -814,7 +838,7 @@ int main()
                             spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", TRAJECTORY_PICK_RADIUS);
                         }
                     }
-                    else if (ctrl_pressed)
+                    else if (ctrl)
                     {
                         PointCloudRecord* picked_record = nullptr;
                         glm::ivec3        picked_id{};
@@ -870,12 +894,67 @@ int main()
 
                         if (picked_record)
                         {
-                            spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
+                            glm::vec3 center = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                            glm::vec3 focus  = center;
 
-                            glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                            // Ctrl + right click : pick the point in this bucket closest to the cast ray,
+                            // and focus the camera target on it (instead of the bucket center)
+                            if (new_right_click)
+                            {
+                                const float POINT_PICK_RADIUS = 0.05f;
+
+                                bool      point_found = false;
+                                float     best_d      = POINT_PICK_RADIUS;
+                                float     best_t      = std::numeric_limits<float>::max();
+                                glm::vec3 best_point{};
+
+                                for (PointCloudLOD* lod = picked_record->lods; lod; lod = lod->next)
+                                {
+                                    for (const PointIntensity& p : lod->points)
+                                    {
+                                        const glm::vec3 to_point = p.position - camera_pos;
+                                        const float     t        = glm::dot(to_point, ray_dir);
+
+                                        if (t <= 0.0f)
+                                        {
+                                            continue;
+                                        }
+
+                                        const float d = glm::length(to_point - t * ray_dir);
+
+                                        if (d > best_d)
+                                        {
+                                            continue;
+                                        }
+
+                                        if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
+                                        {
+                                            point_found = true;
+                                            best_d      = d;
+                                            best_t      = t;
+                                            best_point  = p.position;
+                                        }
+                                    }
+                                }
+
+                                if (point_found)
+                                {
+                                    focus = best_point;
+                                    spdlog::info("Point pick in viewport {} : bucket [{} {} {}], point ({:.3f}, {:.3f}, {:.3f}) (distance to ray {:.3f} m)", pick_idx, picked_id.x, picked_id.y, picked_id.z, focus.x, focus.y, focus.z, best_d);
+                                }
+                                else
+                                {
+                                    spdlog::warn("Point picking missed ... (no point within {:.2f} m of ray in bucket [{} {} {}])", POINT_PICK_RADIUS, picked_id.x, picked_id.y, picked_id.z);
+                                }
+                            }
+                            else
+                            {
+                                spdlog::info("Picking hit in viewport {} : ID = [{} {} {}]", pick_idx, picked_id.x, picked_id.y, picked_id.z);
+                            }
+
                             glm::vec3 offset  = pick_cam.position - pick_cam.target;
-                            pick_cam.target   = center;
-                            pick_cam.position = pick_cam.target + offset;
+                            pick_cam.target   = focus;
+                            pick_cam.position = focus + offset;
                         }
                         else
                         {
@@ -886,11 +965,153 @@ int main()
             }
         }
 
+        // MEASUREMENT PICKING (Shift + LMB)
+        {
+            if (new_left_click && shift && !ImGui::GetIO().WantCaptureMouse)
+            {
+                double mouse_x, mouse_y;
+                glfwGetCursorPos(window, &mouse_x, &mouse_y);
+
+                int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
+                if (pick_idx >= 0 && !_user_settings.measurements.draw_enable)
+                {
+                    spdlog::warn("Measurement picking blocked: measurement display is disabled");
+                }
+                else if (pick_idx >= 0)
+                {
+                    Camera&  pick_cam = ctx.cameras[pick_idx];
+                    Viewport vp       = ctx.viewport_for(pick_idx);
+
+                    double local_x    = mouse_x - vp.x;
+                    double local_gl_y = (static_cast<double>(height) - mouse_y) - vp.y;
+
+                    float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
+                    float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
+
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_view       = pick_cam.get_view();
+
+                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
+                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
+                    ray_eye.z         = -1.0f;
+                    ray_eye.w         = 0.0f;
+
+                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
+                    glm::vec3 camera_pos     = pick_cam.position;
+                    glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
+
+                    // Find the closest point cloud point to the ray, respecting near/far planes
+                    const float MEAS_PICK_RADIUS = 0.05f;
+
+                    bool      point_found = false;
+                    float     best_d      = MEAS_PICK_RADIUS;
+                    float     best_t      = std::numeric_limits<float>::max();
+                    glm::vec3 best_point{};
+
+                    for (auto& [ID, bucket] : _project_data.buckets)
+                    {
+                        for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+                        {
+                            for (const PointIntensity& p : lod->points)
+                            {
+                                const glm::vec3 to_point = p.position - camera_pos;
+
+                                // t = projection onto the ray
+                                const float t = glm::dot(to_point, ray_dir);
+
+                                // Respect camera near/far: the point must be visible
+                                // (its depth along camera_forward must lie within [near_plane, far_plane])
+                                const float depth = glm::dot(to_point, camera_forward);
+                                if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
+                                {
+                                    continue;
+                                }
+
+                                if (t <= 0.0f)
+                                {
+                                    continue;
+                                }
+
+                                const float d = glm::length(to_point - t * ray_dir);
+
+                                if (d > best_d)
+                                {
+                                    continue;
+                                }
+
+                                if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
+                                {
+                                    point_found = true;
+                                    best_d      = d;
+                                    best_t      = t;
+                                    best_point  = p.position;
+                                }
+                            }
+                        }
+                    }
+
+                    if (point_found)
+                    {
+                        MeasurementState& ms = _project_data.measurements;
+
+                        if (!ms.pending_point.has_value())
+                        {
+                            // First pick : store the start point
+                            ms.pending_point = best_point;
+                            spdlog::info("Measurement pick A in viewport {} : ({:.3f}, {:.3f}, {:.3f})", pick_idx, best_point.x, best_point.y, best_point.z);
+                        }
+                        else
+                        {
+                            // Second pick : complete the measurement
+                            MeasurementEntry entry;
+                            entry.point_a    = ms.pending_point.value();
+                            entry.point_b    = best_point;
+                            entry.distance_m = glm::length(entry.point_b - entry.point_a);
+
+                            if (ms.entries.size() < ProjectData::MEASUREMENT_LINE_CAPACITY)
+                            {
+                                ms.entries.push_back(entry);
+                            }
+                            else
+                            {
+                                spdlog::warn("Measurement capacity reached ({} entries) – clear some before adding more", ProjectData::MEASUREMENT_LINE_CAPACITY);
+                            }
+
+                            ms.pending_point.reset();
+                            spdlog::info("Measurement pick B in viewport {} : ({:.3f}, {:.3f}, {:.3f}) | distance = {:.4f} m", pick_idx, best_point.x, best_point.y, best_point.z, entry.distance_m);
+                        }
+                    }
+                    else
+                    {
+                        spdlog::warn("Measurement picking missed (no point within {:.3f} m of ray in viewport {})", MEAS_PICK_RADIUS, pick_idx);
+                    }
+                }
+            }
+
+            // Upload measurement line vertices to GPU each frame
+            if (_project_data.measurement_line_vbo)
+            {
+                const MeasurementState& ms = _project_data.measurements;
+
+                static std::vector<ColoredVertex> meas_verts;
+                meas_verts.clear();
+                for (const MeasurementEntry& e : ms.entries)
+                {
+                    meas_verts.push_back({e.point_a, e.color});
+                    meas_verts.push_back({e.point_b, e.color});
+                }
+                if (!meas_verts.empty())
+                {
+                    _project_data.measurement_line_vbo->Upload(meas_verts.data(), meas_verts.size() * sizeof(ColoredVertex));
+                }
+            }
+        }
+
         auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
         {
             glViewport(vp.x, vp.y, vp.w, vp.h);
 
-            glm::mat4 projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
+            glm::mat4 projection = glm::perspectiveFov(glm::radians(cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
             glm::mat4 view       = cam.get_view();
             glm::mat4 MVP        = projection * view;
 
@@ -926,13 +1147,58 @@ int main()
             // TRAJECTORY
             if (_user_settings.trajectory.draw_enable && (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size()))
             {
-                glLineWidth(_user_settings.trajectory.width);
                 trajectory_program->Bind();
                 trajectory_program->PushUniform16F32("u_MVP", MVP);
                 trajectory_program->PushUniform3F32("u_Color", _user_settings.trajectory.color);
                 _project_data.trajectory_positions_vao->Bind();
-                _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
-                glLineWidth(1.0f);
+
+                if (_user_settings.trajectory.display_mode == TrajectoryDisplayMode::Points)
+                {
+                    glPointSize(_user_settings.trajectory.point_size);
+                    _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
+                    glPointSize(1.0f);
+                }
+                else
+                {
+                    glLineWidth(_user_settings.trajectory.width);
+                    _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
+                    glLineWidth(1.0f);
+                }
+            }
+
+            // MEASUREMENT LINES : draw completed entries as 3-D lines in world space
+            if (_user_settings.measurements.draw_enable)
+            {
+                const MeasurementState& ms          = _project_data.measurements;
+                const size_t            entry_count = ms.entries.size();
+
+                if (entry_count > 0 && _project_data.measurement_line_vao)
+                {
+                    // Per-measurement colours come from the vertex buffer
+                    colored_line_program->Bind();
+                    colored_line_program->PushUniform16F32("u_MVP", MVP);
+                    _project_data.measurement_line_vao->Bind();
+
+                    for (size_t i = 0; i < entry_count; ++i)
+                    {
+                        glLineWidth(ms.entries[i].line_width);
+                        // Draw 2 vertices for each line segment starting at index i * 2
+                        _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(i * 2), 2);
+                    }
+                    glLineWidth(1.0f);
+                }
+
+                // MEASUREMENT PENDING POINT : draw a small yellow cross at the first picked point
+                if (ms.pending_point.has_value() && _user_settings.target.draw_enable)
+                {
+                    camera_target_program->Bind();
+                    camera_target_program->PushUniform16F32("u_MVP", MVP);
+                    camera_target_program->PushUniform3F32("u_Translation", ms.pending_point.value());
+                    camera_target_program->PushUniform1F32("u_Scale", _user_settings.target.scale * 0.5f);
+                    camera_target_program->PushUniform3F32("u_Color", glm::vec3(1.0f, 1.0f, 0.0f));
+                    target_vao->Bind();
+                    target_vao->DrawArray(GL_LINES, 6);
+                }
             }
 
             //  STRETCHER
@@ -1026,8 +1292,9 @@ int main()
                         ++lod_count;
                     }
 
-                    size_t         lod_index = _project_data.use_fixed_lod ? static_cast<size_t>(_project_data.fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
-                    PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
+                    const size_t   viewport_i = std::min<size_t>(viewport_index, MultiViewContext::MAX_CAMERAS - 1);
+                    size_t         lod_index  = _project_data.multi_view.use_fixed_lod[viewport_i] ? static_cast<size_t>(_project_data.multi_view.fixed_lod_index[viewport_i]) : lod_from_distance(distance, 70.0f, lod_count);
+                    PointCloudLOD* lod        = get_lod_at_index(&bucket, lod_index);
 
                     if (!lod || !lod_in_camera_frustum(*lod, frustum))
                     {
@@ -1129,32 +1396,6 @@ int main()
                 }
             }
         };
-
-        const int count = static_cast<int>(ctx.active_count);
-
-        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
-        {
-            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
-        }
-
-        for (int i = 0; i < count; ++i)
-        {
-            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
-            {
-                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
-
-                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
-                if (ctx.symmetric_planes[i])
-                {
-                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                }
-            }
-            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
-            {
-                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
-            }
-        }
 
         for (int i = 0; i < count; ++i)
         {

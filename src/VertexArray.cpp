@@ -86,6 +86,11 @@ void VertexArray::DrawArray(const uint32_t mode, const uint32_t vertex_count)
     glDrawArrays(mode, 0, vertex_count);
 }
 
+void VertexArray::DrawArray(const uint32_t mode, const uint32_t first, const uint32_t vertex_count)
+{
+    glDrawArrays(mode, first, vertex_count);
+}
+
 void VertexArray::DrawElements(const uint32_t mode, const uint32_t index_count, const uint32_t instance_count, const uint32_t base_instance)
 {
     glDrawElementsInstancedBaseVertexBaseInstance(mode, index_count, GL_UNSIGNED_INT, nullptr, instance_count, 0, base_instance);

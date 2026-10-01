@@ -14,32 +14,20 @@ glm::mat4 Camera::get_view() const
 
 void Camera::rotate(double dx, double dy)
 {
-    glm::vec3 offset   = position - target;
-    glm::vec3 forward  = glm::normalize(-offset);
-    glm::vec3 cross_fu = glm::cross(forward, up);
-    if (glm::length(cross_fu) < 1e-4f)
-    {
-        cross_fu = glm::vec3(1.0f, 0.0f, 0.0f);
-    }
-    glm::vec3 right    = glm::normalize(cross_fu);
-    glm::vec3 local_up = glm::normalize(glm::cross(right, forward));
+    glm::vec3   offset  = position - target;
+    const float angle_x = static_cast<float>(-dx * 0.005);
+    const float angle_y = static_cast<float>(-dy * 0.005);
 
-    float angle_x = static_cast<float>(-dx * 0.005);
-    float angle_y = static_cast<float>(-dy * 0.005);
+    offset = glm::vec3(glm::rotate(glm::mat4(1.0f), angle_x, up) * glm::vec4(offset, 0.0f));
 
-    glm::mat4 rot_h = glm::rotate(glm::mat4(1.0f), angle_x, local_up);
-    glm::mat4 rot_v = glm::rotate(glm::mat4(1.0f), angle_y, right);
+    const glm::vec3 forward    = glm::normalize(-offset);
+    const glm::vec3 right      = glm::normalize(glm::cross(forward, up));
+    const float     pitch      = glm::asin(glm::clamp(glm::dot(forward, up), -1.0f, 1.0f));
+    const float     max_pitch  = glm::radians(89.0f);
+    const float     pitch_step = glm::clamp(angle_y, -max_pitch - pitch, max_pitch - pitch);
 
-    offset = glm::vec3(rot_v * rot_h * glm::vec4(offset, 1.0f));
-
-    glm::vec3 new_forward = glm::normalize(-offset);
-    // float     pitch       = glm::degrees(glm::asin(new_forward.y));
-    float pitch = glm::degrees(glm::asin(glm::clamp(glm::dot(new_forward, up), -1.0f, 1.0f)));
-
-    if (pitch < 89.0f && pitch > -89.0f)
-    {
-        position = target + offset;
-    }
+    offset   = glm::vec3(glm::rotate(glm::mat4(1.0f), pitch_step, right) * glm::vec4(offset, 0.0f));
+    position = target + offset;
 }
 
 void Camera::pan(double dx, double dy)
@@ -302,7 +290,11 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
     if (button == GLFW_MOUSE_BUTTON_RIGHT)
     {
-        camera.panning = true;
+        // Ctrl + right button is used for point picking, do not start panning in that case
+        if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) != GLFW_PRESS)
+        {
+            camera.panning = true;
+        }
     }
 
     for (int i = 0; i < MultiViewContext::MAX_CAMERAS; ++i)
