@@ -249,14 +249,6 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
         }
 
         ImGui::Separator();
-        ImGui::Checkbox("Lock target to trajectory", &project_data.lock_viewport0_target_to_trajectory);
-        ImGui::TextDisabled("Press S to snap target to current trajectory pose");
-        if (project_data.lock_viewport0_target_to_trajectory)
-        {
-            ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");
-        }
-
-        ImGui::Separator();
         if (ImGui::TreeNode("Measurements"))
         {
             MeasurementState& ms = project_data.measurements;

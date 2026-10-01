@@ -243,9 +243,15 @@ int main()
         const bool s_key_clicked   = s_key && !s_prev;         // one-shot S press
         const bool new_left_click  = mouse_l && !mouse_l_prev; // released -> pressed
         const bool new_right_click = mouse_r && !mouse_r_prev; // released -> pressed
-        s_prev                     = s_key;
-        mouse_l_prev               = mouse_l;
-        mouse_r_prev               = mouse_r;
+
+        // Shift + S : toggle continuous snap of viewport 0 camera target to the current trajectory pose
+        static bool shift_s_prev    = false;
+        const bool  shift_s_clicked = shift && s_key && !shift_s_prev;
+        shift_s_prev                = shift && s_key;
+
+        s_prev       = s_key;
+        mouse_l_prev = mouse_l;
+        mouse_r_prev = mouse_r;
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -345,6 +351,7 @@ int main()
                             shortcut_row("Shift + RMB drag", "Fast panning");
                             shortcut_row("G", "Show stretcher gizmo : move / rotate current trajectory pose");
                             shortcut_row("S", "Snap viewport 1 camera target to current trajectory pose");
+                            shortcut_row("Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
                             shortcut_row("Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
                             shortcut_row("Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
                             shortcut_row("Alt + LMB", "Pick trajectory point : sets the current trajectory index");
@@ -558,9 +565,16 @@ int main()
         }
 
         // One-time snap of viewport 0 camera target to the current trajectory pose (S key)
-        if (s_key_clicked && _project_data.trajectory_positions.size() && !_project_data.lock_viewport0_target_to_trajectory)
+        if (s_key_clicked && !shift && _project_data.trajectory_positions.size() && !_project_data.lock_viewport0_target_to_trajectory)
         {
             snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
+        }
+
+        // Shift + S : toggle continuous snap on / off
+        if (shift_s_clicked && _project_data.trajectory_positions.size())
+        {
+            _project_data.lock_viewport0_target_to_trajectory = !_project_data.lock_viewport0_target_to_trajectory;
+            spdlog::info("Continuous snap to trajectory pose {}", _project_data.lock_viewport0_target_to_trajectory ? "enabled" : "disabled");
         }
 
         const int count = static_cast<int>(ctx.active_count);
