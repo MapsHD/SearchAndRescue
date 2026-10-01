@@ -7,14 +7,6 @@
 #include <algorithm>
 #include <limits>
 
-// Moves camera target (keeping position - target offset) to the given pose position
-static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
-{
-    const glm::vec3 offset = cam.position - cam.target;
-    cam.target             = pose_pos;
-    cam.position           = pose_pos + offset;
-}
-
 void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settings, bool& open)
 {
     MultiViewContext& ctx = project_data.multi_view;
@@ -258,14 +250,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
         ImGui::Separator();
         ImGui::Checkbox("Lock target to trajectory", &project_data.lock_viewport0_target_to_trajectory);
-        ImGui::SameLine();
-        if (ImGui::Button("Snap"))
-        {
-            if (project_data.trajectory_positions.size())
-            {
-                snap_camera_target_to_trajectory(project_data.multi_view.cameras[0], project_data.trajectory_positions[project_data.trajectory_index].position);
-            }
-        }
+        ImGui::TextDisabled("Press S to snap target to current trajectory pose");
         if (project_data.lock_viewport0_target_to_trajectory)
         {
             ImGui::TextDisabled("locked - viewport 0 target follows current trajectory pose each frame");

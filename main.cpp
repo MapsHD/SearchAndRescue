@@ -160,7 +160,7 @@ int main()
     glfwSetWindowSizeCallback(window, size_callback);
     glfwSetDropCallback(window, drop_callback);
 
-    MultiViewContext& ctx = _project_data.multi_view;
+    MultiViewContext& ctx   = _project_data.multi_view;
     ctx.cameras[0].position = glm::vec3(10.0f, 10.0f, 10.0f);
     ctx.cameras[1].position = glm::vec3(-10.0f, 10.0f, 10.0f);
     ctx.cameras[2].position = glm::vec3(10.0f, -10.0f, 10.0f);
@@ -225,6 +225,27 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
         glfwPollEvents();
+
+        // Input state : query keys and mouse buttons once per frame and derive bools
+        const bool g_key   = (glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS);
+        const bool s_key   = (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS);
+        const bool ctrl    = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
+        const bool alt     = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
+        const bool shift   = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ||
+                             (glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+        const bool mouse_l = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+        const bool mouse_r = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
+
+        static bool s_prev       = false;
+        static bool mouse_l_prev = false;
+        static bool mouse_r_prev = false;
+
+        const bool s_key_clicked   = s_key && !s_prev;         // one-shot S press
+        const bool new_left_click  = mouse_l && !mouse_l_prev; // released -> pressed
+        const bool new_right_click = mouse_r && !mouse_r_prev; // released -> pressed
+        s_prev                     = s_key;
+        mouse_l_prev               = mouse_l;
+        mouse_r_prev               = mouse_r;
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -291,13 +312,56 @@ int main()
                     ImGui::EndMenu();
                 }
 
-                // Right-aligned "Authors" text with tooltip on hover
-                const float authors_text_width = ImGui::CalcTextSize("Authors").x;
-                ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
-                ImGui::Text("Authors");
-                if (ImGui::IsItemHovered())
+                // Right-aligned "Shortcuts" text with tooltip : table of all keyboard / mouse controls
                 {
-                    ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
+                    const float authors_text_width = ImGui::CalcTextSize("Authors").x;
+                    const float shortcuts_width    = ImGui::CalcTextSize("Shortcuts").x;
+
+                    // Just for nicer looks
+                    const float artificial_padding = 10.0f;
+
+                    ImGui::SameLine(ImGui::GetWindowWidth() - artificial_padding - authors_text_width - shortcuts_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                    ImGui::Text("Shortcuts");
+                    if (ImGui::BeginItemTooltip())
+                    {
+                        if (ImGui::BeginTable("##shortcuts", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("Input");
+                            ImGui::TableSetupColumn("Description");
+                            ImGui::TableHeadersRow();
+
+                            auto shortcut_row = [](const char* input, const char* description)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(input);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(description);
+                            };
+
+                            shortcut_row("LMB drag", "Orbit the camera around its target");
+                            shortcut_row("RMB drag", "Pan the camera");
+                            shortcut_row("Scroll", "Zoom (hold Shift for faster zoom)");
+                            shortcut_row("Shift + RMB drag", "Fast panning");
+                            shortcut_row("G", "Show stretcher gizmo : move / rotate current trajectory pose");
+                            shortcut_row("S", "Snap viewport 1 camera target to current trajectory pose");
+                            shortcut_row("Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
+                            shortcut_row("Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
+                            shortcut_row("Alt + LMB", "Pick trajectory point : sets the current trajectory index");
+                            shortcut_row("Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
+                    }
+
+                    // Right-aligned "Authors" text with tooltip on hover
+                    ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
+                    ImGui::Text("Authors");
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("- Michal Wlasiuk [michal.mwa87@gmail.com]\n- Janusz Bedkowski [januszbedkowski@gmail.com]");
+                    }
                 }
 
                 ImGui::EndMenuBar();
@@ -404,7 +468,7 @@ int main()
             }
         }
 
-        if (glfwGetKey(window, GLFW_KEY_G))
+        if (g_key)
         {
             glm::vec3 stretcher_position    = glm::vec3(0.0f);
             glm::mat3 stretcher_orientation = glm::mat3(1.0f);
@@ -465,6 +529,12 @@ int main()
 
                 glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
+        }
+
+        // One-time snap of viewport 0 camera target to the current trajectory pose (S key)
+        if (s_key_clicked && _project_data.trajectory_positions.size() && !_project_data.lock_viewport0_target_to_trajectory)
+        {
+            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
         }
 
         const int count = static_cast<int>(ctx.active_count);
@@ -593,20 +663,8 @@ int main()
 
         // PICKING POINT CLOUD
         {
-            static bool prev_mouse_pressed       = false;
-            static bool prev_mouse_right_pressed = false;
-
-            bool ctrl_pressed        = (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS);
-            bool alt_pressed         = (glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS);
-            bool mouse_pressed       = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-            bool mouse_right_pressed = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
-
             // Trigger once when mouse goes from released -> pressed, while Ctrl (bucket pick) or Alt (trajectory pick) is held
-            bool new_click = mouse_pressed && !prev_mouse_pressed && (ctrl_pressed || alt_pressed);
-            // Ctrl + right button : pick a specific point inside the bucket under the cursor
-            bool new_right_click = mouse_right_pressed && !prev_mouse_right_pressed && ctrl_pressed && !alt_pressed;
-            prev_mouse_pressed       = mouse_pressed;
-            prev_mouse_right_pressed = mouse_right_pressed;
+            bool new_click = new_left_click && (ctrl || alt);
 
             if ((new_click || new_right_click) && !ImGui::GetIO().WantCaptureMouse)
             {
@@ -637,7 +695,7 @@ int main()
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
-                    if (alt_pressed)
+                    if (alt)
                     {
                         // Pick closest trajectory point to the cast ray (within 0.25 m of the ray)
                         const float TRAJECTORY_PICK_RADIUS = 0.25f;
@@ -684,7 +742,7 @@ int main()
                             spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", TRAJECTORY_PICK_RADIUS);
                         }
                     }
-                    else if (ctrl_pressed)
+                    else if (ctrl)
                     {
                         PointCloudRecord* picked_record = nullptr;
                         glm::ivec3        picked_id{};
@@ -740,8 +798,8 @@ int main()
 
                         if (picked_record)
                         {
-                            glm::vec3 center  = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
-                            glm::vec3 focus   = center;
+                            glm::vec3 center = picked_record->aabb.min + 0.5f * (picked_record->aabb.max - picked_record->aabb.min);
+                            glm::vec3 focus  = center;
 
                             // Ctrl + right click : pick the point in this bucket closest to the cast ray,
                             // and focus the camera target on it (instead of the bucket center)
@@ -749,9 +807,9 @@ int main()
                             {
                                 const float POINT_PICK_RADIUS = 0.05f;
 
-                                bool     point_found = false;
-                                float    best_d      = POINT_PICK_RADIUS;
-                                float    best_t      = std::numeric_limits<float>::max();
+                                bool      point_found = false;
+                                float     best_d      = POINT_PICK_RADIUS;
+                                float     best_t      = std::numeric_limits<float>::max();
                                 glm::vec3 best_point{};
 
                                 for (PointCloudLOD* lod = picked_record->lods; lod; lod = lod->next)
@@ -813,15 +871,7 @@ int main()
 
         // MEASUREMENT PICKING (Shift + LMB)
         {
-            static bool prev_shift_mouse_pressed = false;
-
-            bool shift_pressed        = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) ||
-                                        (glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
-            bool mouse_pressed        = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-            bool new_shift_click      = mouse_pressed && !prev_shift_mouse_pressed && shift_pressed;
-            prev_shift_mouse_pressed  = mouse_pressed;
-
-            if (new_shift_click && !ImGui::GetIO().WantCaptureMouse)
+            if (new_left_click && shift && !ImGui::GetIO().WantCaptureMouse)
             {
                 double mouse_x, mouse_y;
                 glfwGetCursorPos(window, &mouse_x, &mouse_y);
@@ -1008,8 +1058,8 @@ int main()
 
             // MEASUREMENT LINES : draw completed entries as 3-D lines in world space
             {
-                const MeasurementState& ms = _project_data.measurements;
-                const size_t entry_count   = ms.entries.size();
+                const MeasurementState& ms          = _project_data.measurements;
+                const size_t            entry_count = ms.entries.size();
 
                 if (entry_count > 0 && _project_data.measurement_line_vao)
                 {
@@ -1128,9 +1178,9 @@ int main()
                         ++lod_count;
                     }
 
-                    const size_t viewport_i = std::min<size_t>(viewport_index, MultiViewContext::MAX_CAMERAS - 1);
-                    size_t       lod_index  = _project_data.multi_view.use_fixed_lod[viewport_i] ? static_cast<size_t>(_project_data.multi_view.fixed_lod_index[viewport_i]) : lod_from_distance(distance, 70.0f, lod_count);
-                    PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
+                    const size_t   viewport_i = std::min<size_t>(viewport_index, MultiViewContext::MAX_CAMERAS - 1);
+                    size_t         lod_index  = _project_data.multi_view.use_fixed_lod[viewport_i] ? static_cast<size_t>(_project_data.multi_view.fixed_lod_index[viewport_i]) : lod_from_distance(distance, 70.0f, lod_count);
+                    PointCloudLOD* lod        = get_lod_at_index(&bucket, lod_index);
 
                     if (!lod || !lod_in_camera_frustum(*lod, frustum))
                     {
@@ -1237,7 +1287,6 @@ int main()
         {
             draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
         }
-
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
