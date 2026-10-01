@@ -1147,13 +1147,23 @@ int main()
             // TRAJECTORY
             if (_user_settings.trajectory.draw_enable && (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size()))
             {
-                glLineWidth(_user_settings.trajectory.width);
                 trajectory_program->Bind();
                 trajectory_program->PushUniform16F32("u_MVP", MVP);
                 trajectory_program->PushUniform3F32("u_Color", _user_settings.trajectory.color);
                 _project_data.trajectory_positions_vao->Bind();
-                _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
-                glLineWidth(1.0f);
+
+                if (_user_settings.trajectory.display_mode == TrajectoryDisplayMode::Points)
+                {
+                    glPointSize(_user_settings.trajectory.point_size);
+                    _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
+                    glPointSize(1.0f);
+                }
+                else
+                {
+                    glLineWidth(_user_settings.trajectory.width);
+                    _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
+                    glLineWidth(1.0f);
+                }
             }
 
             // MEASUREMENT LINES : draw completed entries as 3-D lines in world space

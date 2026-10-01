@@ -165,7 +165,15 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             ImGui::Checkbox("Enable draw", &user_settings.trajectory.draw_enable);
             ImGui::BeginDisabled(!user_settings.trajectory.draw_enable);
             {
+                const char* const display_modes = "Line strip\0Points\0";
+                int32_t           display_mode  = static_cast<int32_t>(user_settings.trajectory.display_mode);
+                if (ImGui::Combo("Display mode", &display_mode, display_modes))
+                {
+                    user_settings.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(display_mode);
+                }
+
                 ImGui::DragFloat("Width", &user_settings.trajectory.width, 0.25f, 1.0f, 8.0f);
+                ImGui::DragFloat("Point size", &user_settings.trajectory.point_size, 0.25f, 1.0f, 16.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.trajectory.color));
             }
             ImGui::EndDisabled();
@@ -277,6 +285,8 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
         {"trajectory",
          {{"draw_enable", user_settings.trajectory.draw_enable},
           {"width", user_settings.trajectory.width},
+          {"point_size", user_settings.trajectory.point_size},
+          {"display_mode", static_cast<int32_t>(user_settings.trajectory.display_mode)},
           {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
         {"measurements", {{"draw_enable", user_settings.measurements.draw_enable}}},
         {"stretcher",
@@ -349,6 +359,8 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*target, "width", loaded.target.width) &&
           ReadSetting(*trajectory, "draw_enable", loaded.trajectory.draw_enable) &&
           ReadSetting(*trajectory, "width", loaded.trajectory.width) &&
+          ReadSetting(*trajectory, "point_size", loaded.trajectory.point_size) &&
+          ReadSetting(*trajectory, "display_mode", loaded.trajectory.display_mode_value) &&
           ReadSetting(*measurements, "draw_enable", loaded.measurements.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable", loaded.stretcher.draw_enable) &&
           ReadSetting(*stretcher, "draw_enable_bbox", loaded.stretcher.draw_enable_bbox) &&
@@ -376,6 +388,10 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
     Vec3FromJSON(collision, "points_color", loaded.collision.points_color);
+
+    if (loaded.trajectory.display_mode_value < 0 || loaded.trajectory.display_mode_value > 1)
+        return false;
+    loaded.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(loaded.trajectory.display_mode_value);
 
     if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
         return false;
