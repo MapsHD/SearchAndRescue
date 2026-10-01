@@ -278,7 +278,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
             {
                 int erase_index = -1; // deferred single-row deletion
 
-                if (ImGui::BeginTable("##meas_table", 6,
+                if (ImGui::BeginTable("##meas_table", 7,
                                       ImGuiTableFlags_Borders |
                                           ImGuiTableFlags_RowBg |
                                           ImGuiTableFlags_SizingStretchProp))
@@ -288,6 +288,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ImGui::TableSetupColumn("Point B", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Distance (m)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
                     ImGui::TableSetupColumn("Color", ImGuiTableColumnFlags_WidthFixed, 40.0f);
+                    ImGui::TableSetupColumn("Width", ImGuiTableColumnFlags_WidthFixed, 75.0f);
                     ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 26.0f);
                     ImGui::TableHeadersRow();
 
@@ -314,6 +315,19 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                         ImGui::PopID();
 
                         ImGui::TableSetColumnIndex(5);
+                        ImGui::PushID(i);
+                        ImGui::SetNextItemWidth(70.0f);
+                        if (ImGui::DragFloat("##meas_width", &e.line_width, 0.25f, 1.0f, 8.0f, "%.1f"))
+                        {
+                            e.line_width = std::clamp(e.line_width, 1.0f, 8.0f);
+                        }
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::SetTooltip("Line width (1 to 8, default 2)");
+                        }
+                        ImGui::PopID();
+
+                        ImGui::TableSetColumnIndex(6);
                         ImGui::PushID(i);
                         if (ImGui::SmallButton("x"))
                         {

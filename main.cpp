@@ -1,4 +1,5 @@
-﻿#include <cctype>
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -1104,13 +1105,17 @@ int main()
 
                 if (entry_count > 0 && _project_data.measurement_line_vao)
                 {
-                    glLineWidth(2.0f);
                     // Per-measurement colours come from the vertex buffer
                     colored_line_program->Bind();
                     colored_line_program->PushUniform16F32("u_MVP", MVP);
                     _project_data.measurement_line_vao->Bind();
-                    // GL_LINES interprets consecutive vertex pairs as independent segments
-                    _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(2 * entry_count));
+
+                    for (size_t i = 0; i < entry_count; ++i)
+                    {
+                        glLineWidth(ms.entries[i].line_width);
+                        // Draw 2 vertices for each line segment starting at index i * 2
+                        _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(i * 2), 2);
+                    }
                     glLineWidth(1.0f);
                 }
 

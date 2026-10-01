@@ -72,5 +72,6 @@ public:
     void Unbind();
 
     void DrawArray(const uint32_t mode, const uint32_t vertex_count);
+    void DrawArray(const uint32_t mode, const uint32_t first, const uint32_t vertex_count);
     void DrawElements(const uint32_t mode, const uint32_t index_count, const uint32_t instance_count, const uint32_t base_instance);
 };

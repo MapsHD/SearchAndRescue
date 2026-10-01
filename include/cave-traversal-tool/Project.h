@@ -22,6 +22,9 @@ struct MeasurementEntry
 
     // Per-measurement colour (line + distance label)
     glm::vec3 color = glm::vec3(0.0f, 1.0f, 1.0f); // cyan by default
+
+    // Per-measurement line width (1 to 8, default 2)
+    float line_width = 2.0f;
 };
 
 // Transient picking state (first point waiting for second click) + list of completed measurements
