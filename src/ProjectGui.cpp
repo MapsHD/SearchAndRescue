@@ -3,6 +3,7 @@
 #include <imgui.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -277,7 +278,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
             {
                 int erase_index = -1; // deferred single-row deletion
 
-                if (ImGui::BeginTable("##meas_table", 5,
+                if (ImGui::BeginTable("##meas_table", 6,
                                       ImGuiTableFlags_Borders |
                                           ImGuiTableFlags_RowBg |
                                           ImGuiTableFlags_SizingStretchProp))
@@ -286,12 +287,13 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ImGui::TableSetupColumn("Point A", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Point B", ImGuiTableColumnFlags_WidthStretch);
                     ImGui::TableSetupColumn("Distance (m)", ImGuiTableColumnFlags_WidthFixed, 110.0f);
+                    ImGui::TableSetupColumn("Color", ImGuiTableColumnFlags_WidthFixed, 40.0f);
                     ImGui::TableSetupColumn("##del", ImGuiTableColumnFlags_WidthFixed, 26.0f);
                     ImGui::TableHeadersRow();
 
                     for (int i = 0; i < static_cast<int>(ms.entries.size()); ++i)
                     {
-                        const MeasurementEntry& e = ms.entries[i];
+                        MeasurementEntry& e = ms.entries[i];
                         ImGui::TableNextRow();
 
                         ImGui::TableSetColumnIndex(0);
@@ -307,6 +309,11 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                         ImGui::Text("%.4f", e.distance_m);
 
                         ImGui::TableSetColumnIndex(4);
+                        ImGui::PushID(i);
+                        ImGui::ColorEdit3("##meas_color", glm::value_ptr(e.color), ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+                        ImGui::PopID();
+
+                        ImGui::TableSetColumnIndex(5);
                         ImGui::PushID(i);
                         if (ImGui::SmallButton("x"))
                         {

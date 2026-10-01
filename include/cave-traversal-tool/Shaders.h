@@ -22,5 +22,8 @@ ProgramShaderSources GetProgramShaderSources_PointCloudColorMap();
 ProgramShaderSources GetProgramShaderSources_Stretcher();
 ProgramShaderSources GetProgramShaderSources_Trajectory();
 
+// Colored lines : per-vertex colour instead of a single u_Color uniform (used by measurements)
+ProgramShaderSources GetProgramShaderSources_ColoredLine();
+
 // Helper : compile a vertex+fragment program from a shader sources descriptor
 Program* make_program(const ProgramShaderSources& sources);

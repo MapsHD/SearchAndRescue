@@ -19,6 +19,9 @@ struct MeasurementEntry
     glm::vec3 point_a{};
     glm::vec3 point_b{};
     float     distance_m = 0.0f; // ||b - a|| in metres
+
+    // Per-measurement colour (line + distance label)
+    glm::vec3 color = glm::vec3(0.0f, 1.0f, 1.0f); // cyan by default
 };
 
 // Transient picking state (first point waiting for second click) + list of completed measurements
@@ -89,7 +92,7 @@ struct ProjectData
     MeasurementState measurements{};
 
     // GPU side data : measurement lines (2 vertices per completed entry + optional pending point marker)
-    // Buffer holds Point vertices; capacity is 2 * MEASUREMENT_LINE_CAPACITY entries
+    // Buffer holds ColoredVertex vertices; capacity is 2 * MEASUREMENT_LINE_CAPACITY entries
     static constexpr size_t MEASUREMENT_LINE_CAPACITY = 256;
     Buffer*                 measurement_line_vbo      = nullptr;
     VertexArray*            measurement_line_vao      = nullptr;

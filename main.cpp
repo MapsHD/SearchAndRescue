@@ -194,9 +194,11 @@ int main()
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
     Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
+    Program* colored_line_program           = make_program(GetProgramShaderSources_ColoredLine());
 
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
+    const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
     Buffer*      origin_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
     VertexArray* origin_vao    = new VertexArray(origin_buffer, false, nullptr, false, layout_color_point);
@@ -208,9 +210,9 @@ int main()
     _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
     _project_data.collision_points_vao = new VertexArray(_project_data.collision_points_vbo, false, nullptr, false, layout_point);
 
-    // Measurement lines : pre-allocated GPU buffer, 2 vertices per completed entry
-    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(Point), nullptr);
-    _project_data.measurement_line_vao = new VertexArray(_project_data.measurement_line_vbo, false, nullptr, false, layout_point);
+    // Measurement lines : pre-allocated GPU buffer, 2 coloured vertices per completed entry
+    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
+    _project_data.measurement_line_vao = new VertexArray(_project_data.measurement_line_vbo, false, nullptr, false, layout_colored);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -686,15 +688,14 @@ int main()
                     const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
                     const ImVec2 text_size = ImGui::CalcTextSize(label);
 
-                    // Semi-transparent dark background rect for readability
+                    // Label : near-black background with white text, independent of the measurement line colour
                     dl->AddRectFilled(
                         ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
                         ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
-                        IM_COL32(0, 0, 0, 160),
+                        IM_COL32(10, 10, 10, 220),
                         2.0f);
 
-                    // Cyan text matching the measurement line colour
-                    dl->AddText(text_pos, IM_COL32(0, 255, 255, 255), label);
+                    dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
                 }
             }
         }
@@ -1033,16 +1034,16 @@ int main()
             {
                 const MeasurementState& ms = _project_data.measurements;
 
-                static std::vector<Point> meas_verts;
+                static std::vector<ColoredVertex> meas_verts;
                 meas_verts.clear();
                 for (const MeasurementEntry& e : ms.entries)
                 {
-                    meas_verts.push_back({e.point_a});
-                    meas_verts.push_back({e.point_b});
+                    meas_verts.push_back({e.point_a, e.color});
+                    meas_verts.push_back({e.point_b, e.color});
                 }
                 if (!meas_verts.empty())
                 {
-                    _project_data.measurement_line_vbo->Upload(meas_verts.data(), meas_verts.size() * sizeof(Point));
+                    _project_data.measurement_line_vbo->Upload(meas_verts.data(), meas_verts.size() * sizeof(ColoredVertex));
                 }
             }
         }
@@ -1104,10 +1105,9 @@ int main()
                 if (entry_count > 0 && _project_data.measurement_line_vao)
                 {
                     glLineWidth(2.0f);
-                    trajectory_program->Bind();
-                    trajectory_program->PushUniform16F32("u_MVP", MVP);
-                    // Bright cyan lines for measurements
-                    trajectory_program->PushUniform3F32("u_Color", glm::vec3(0.0f, 1.0f, 1.0f));
+                    // Per-measurement colours come from the vertex buffer
+                    colored_line_program->Bind();
+                    colored_line_program->PushUniform16F32("u_MVP", MVP);
                     _project_data.measurement_line_vao->Bind();
                     // GL_LINES interprets consecutive vertex pairs as independent segments
                     _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(2 * entry_count));
