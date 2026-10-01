@@ -83,8 +83,12 @@ struct MultiViewContext
     // Level of detail : fixed LOD index vs automatic LOD from distance (per viewport / camera)
     bool    use_fixed_lod[MAX_CAMERAS]{true, true, true, true};
     int32_t fixed_lod_index[MAX_CAMERAS]{0, 0, 0, 0};
-    int     window_width{800};
-    int     window_height{600};
+
+    // World axes orientation overlay in the bottom-left of each viewport
+    bool draw_axes_overlay[MAX_CAMERAS]{true, true, true, true};
+
+    int window_width{800};
+    int window_height{600};
 
     Viewport viewport_for(int i) const;
     int      camera_index_at(double xpos, double ypos) const;

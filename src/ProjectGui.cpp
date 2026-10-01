@@ -72,6 +72,12 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ImGui::Separator();
                 ImGui::Text("Viewport %d", i + 1);
 
+                ImGui::Checkbox(("draw_axes_overlay##" + std::to_string(i)).c_str(), &ctx.draw_axes_overlay[i]);
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("Show world axes orientation overlay in this viewport");
+                }
+
                 // Per-camera FOV (all viewports)
                 if (ImGui::DragFloat(("fov_y##" + std::to_string(i)).c_str(), &ctx.cameras[i].fov_y, 0.5f, 1.0f, 170.0f, "%.1f deg"))
                 {
