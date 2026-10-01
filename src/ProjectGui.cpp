@@ -4,6 +4,7 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <limits>
 
 // Moves camera target (keeping position - target offset) to the given pose position
@@ -20,6 +21,34 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
     if (ImGui::Begin("ProjectData", &open))
     {
+        if (ImGui::TreeNode("File input / output"))
+        {
+            if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
+            {
+                load_trajectory_dialog(project_data, user_settings);
+            }
+            ImGui::Text("%s", project_data.trajectory_path.empty() ? "(none)" : project_data.trajectory_path.c_str());
+
+            ImGui::Separator();
+
+            if (ImGui::Button("Load object", ImVec2(200.0f, 0.0f)))
+            {
+                load_object_dialog(project_data);
+            }
+            ImGui::Text("%s", project_data.object_path.empty() ? "(none)" : project_data.object_path.c_str());
+
+            ImGui::Separator();
+
+            if (ImGui::Button("Load environment", ImVec2(200.0f, 0.0f)))
+            {
+                load_environment_dialog(project_data, user_settings);
+            }
+            ImGui::Text("%s", project_data.environment_path.empty() ? "(none)" : project_data.environment_path.c_str());
+
+            ImGui::TreePop();
+        }
+
+        ImGui::Separator();
         if (ImGui::TreeNode("Viewport"))
         {
             int count = static_cast<int>(ctx.active_count);
@@ -40,7 +69,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
             static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
 
-            for (int i = 1; i <= 3; ++i)
+            for (int i = 0; i <= 3; ++i)
             {
                 if (i >= static_cast<int>(ctx.active_count))
                 {
@@ -50,8 +79,14 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ImGui::Separator();
                 ImGui::Text("Viewport %d", i + 1);
 
+                // Per-camera FOV (all viewports)
+                if (ImGui::DragFloat(("fov_y##" + std::to_string(i)).c_str(), &ctx.cameras[i].fov_y, 0.5f, 1.0f, 170.0f, "%.1f deg"))
+                {
+                    ctx.cameras[i].fov_y = std::clamp(ctx.cameras[i].fov_y, 1.0f, 170.0f);
+                }
+
                 int mode = static_cast<int>(ctx.camera_modes[i]);
-                if (ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
+                if (i >= 1 && ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
                 {
                     CameraMode old_mode = ctx.camera_modes[i];
                     ctx.camera_modes[i] = static_cast<CameraMode>(mode);
@@ -78,7 +113,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ImGui::SameLine();
                 ImGui::Text("camera");
 
-                if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+                if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
                 {
                     // Plane control mode : symmetric (single slider, planes derived from distance) vs asymmetric (independent planes)
                     const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
@@ -142,35 +177,22 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                         }
                     }
                 }
+                else
+                {
+                    // Free orbit (and viewport 0) : independent near / far plane control
+                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
+                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
+
+                    if (ctx.cameras[i].near_plane < 0.01f)
+                    {
+                        ctx.cameras[i].near_plane = 0.01f;
+                    }
+                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
+                    {
+                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
+                    }
+                }
             }
-
-            ImGui::TreePop();
-        }
-
-        ImGui::Separator();
-        if (ImGui::TreeNode("File input / output"))
-        {
-            if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
-            {
-                load_trajectory_dialog(project_data, user_settings);
-            }
-            ImGui::Text("%s", project_data.trajectory_path.empty() ? "(none)" : project_data.trajectory_path.c_str());
-
-            ImGui::Separator();
-
-            if (ImGui::Button("Load object", ImVec2(200.0f, 0.0f)))
-            {
-                load_object_dialog(project_data);
-            }
-            ImGui::Text("%s", project_data.object_path.empty() ? "(none)" : project_data.object_path.c_str());
-
-            ImGui::Separator();
-
-            if (ImGui::Button("Load environment", ImVec2(200.0f, 0.0f)))
-            {
-                load_environment_dialog(project_data, user_settings);
-            }
-            ImGui::Text("%s", project_data.environment_path.empty() ? "(none)" : project_data.environment_path.c_str());
 
             ImGui::TreePop();
         }

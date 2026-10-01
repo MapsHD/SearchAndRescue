@@ -1,4 +1,4 @@
-#include <cctype>
+﻿#include <cctype>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -426,7 +426,7 @@ int main()
             float    rect_w = static_cast<float>(vp0.w);
             float    rect_h = static_cast<float>(vp0.h);
 
-            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(55.0f), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
+            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(ctx.cameras[0].fov_y), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
             glm::mat4 gizmo_view = ctx.cameras[0].get_view();
 
             ImGuizmo::BeginFrame();
@@ -530,7 +530,7 @@ int main()
                 const Viewport vp0  = ctx.viewport_for(0);
 
                 const glm::mat4 proj0 = glm::perspectiveFov(
-                    glm::radians(55.0f),
+                    glm::radians(cam0.fov_y),
                     static_cast<float>(vp0.w), static_cast<float>(vp0.h),
                     cam0.near_plane, cam0.far_plane);
                 const glm::mat4 view0 = cam0.get_view();
@@ -625,7 +625,7 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
                     glm::mat4 pick_view       = pick_cam.get_view();
 
                     glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
@@ -838,7 +838,7 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
+                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
                     glm::mat4 pick_view       = pick_cam.get_view();
 
                     glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
@@ -961,7 +961,7 @@ int main()
         {
             glViewport(vp.x, vp.y, vp.w, vp.h);
 
-            glm::mat4 projection = glm::perspectiveFov(glm::radians(55.0f), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
+            glm::mat4 projection = glm::perspectiveFov(glm::radians(cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
             glm::mat4 view       = cam.get_view();
             glm::mat4 MVP        = projection * view;
 
