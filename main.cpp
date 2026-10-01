@@ -1128,7 +1128,8 @@ int main()
                         ++lod_count;
                     }
 
-                    size_t         lod_index = _project_data.use_fixed_lod ? static_cast<size_t>(_project_data.fixed_lod_index) : lod_from_distance(distance, 70.0f, lod_count);
+                    const size_t viewport_i = std::min<size_t>(viewport_index, MultiViewContext::MAX_CAMERAS - 1);
+                    size_t       lod_index  = _project_data.multi_view.use_fixed_lod[viewport_i] ? static_cast<size_t>(_project_data.multi_view.fixed_lod_index[viewport_i]) : lod_from_distance(distance, 70.0f, lod_count);
                     PointCloudLOD* lod       = get_lod_at_index(&bucket, lod_index);
 
                     if (!lod || !lod_in_camera_frustum(*lod, frustum))

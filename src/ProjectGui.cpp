@@ -85,6 +85,13 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ctx.cameras[i].fov_y = std::clamp(ctx.cameras[i].fov_y, 1.0f, 170.0f);
                 }
 
+                // Per-viewport LOD control
+                const int32_t max_lod_index = project_data.max_lod_count > 0 ? static_cast<int32_t>(project_data.max_lod_count - 1) : 0;
+                ImGui::Checkbox(("use_fixed_lod##" + std::to_string(i)).c_str(), &ctx.use_fixed_lod[i]);
+                ImGui::BeginDisabled(!ctx.use_fixed_lod[i]);
+                ImGui::SliderInt(("fixed_lod_index##" + std::to_string(i)).c_str(), &ctx.fixed_lod_index[i], 0, max_lod_index);
+                ImGui::EndDisabled();
+
                 int mode = static_cast<int>(ctx.camera_modes[i]);
                 if (i >= 1 && ImGui::Combo(("##camera_mode_" + std::to_string(i)).c_str(), &mode, camera_mode_names, 13))
                 {
@@ -194,18 +201,6 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 }
             }
 
-            ImGui::TreePop();
-        }
-
-        ImGui::Separator();
-        if (ImGui::TreeNode("Level of Detail (LOD)"))
-        {
-            ImGui::Checkbox("use_fixed_lod", &project_data.use_fixed_lod);
-
-            const int32_t max_lod_index = project_data.max_lod_count > 0 ? static_cast<int32_t>(project_data.max_lod_count - 1) : 0;
-            ImGui::BeginDisabled(!project_data.use_fixed_lod);
-            ImGui::SliderInt("fixed_lod_index", &project_data.fixed_lod_index, 0, max_lod_index);
-            ImGui::EndDisabled();
             ImGui::TreePop();
         }
 

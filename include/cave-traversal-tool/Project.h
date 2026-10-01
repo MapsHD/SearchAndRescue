@@ -77,10 +77,6 @@ struct ProjectData
     Buffer*      collision_points_vbo = nullptr;
     VertexArray* collision_points_vao = nullptr;
 
-    // Level of detail : fixed LOD index vs automatic LOD from distance
-    bool    use_fixed_lod   = true;
-    int32_t fixed_lod_index = 0;
-
     // Trajectory playback state
     bool     trajectory_index_auto_play           = false;
     int32_t  trajectory_index_auto_play_increment = 1;
