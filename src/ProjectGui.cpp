@@ -185,6 +185,12 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ImGui::BeginDisabled(true);
                     ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
                     ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                    if (is_ortho)
+                    {
+                        // Orthographic : the view axis distance is used as a dolly, so the box
+                        // half height is derived from it and shown read-only
+                        ImGui::DragFloat(("ortho_half_height##" + std::to_string(i)).c_str(), &ctx.cameras[i].ortho_half_height, 0.05f, 0.01f, 10000.0f, "%.3f");
+                    }
                     ImGui::EndDisabled();
                 }
                 else if (is_ortho)

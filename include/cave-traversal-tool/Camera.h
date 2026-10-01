@@ -57,6 +57,14 @@ struct Camera
     // World units per pixel at a given depth along the view axis (handles both projection types)
     float world_units_per_pixel(float depth) const;
 
+    // Picking ray for a normalized device coordinate (ndc_x, ndc_y in [-1, 1]).
+    // Perspective : the ray starts at the camera position and diverges.
+    // Orthographic : the ray direction is the camera forward for every pixel, only the
+    // origin shifts across the orthographic box (a parallel ray), matching what is rendered.
+    // out_origin / out_direction (direction normalized) are in world space.
+    void screen_ray(float ndc_x, float ndc_y, float viewport_width, float viewport_height,
+                    glm::vec3& out_origin, glm::vec3& out_direction) const;
+
     void rotate(double dx, double dy);
     void pan(double dx, double dy);
     void zoom(double scroll);

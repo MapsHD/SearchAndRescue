@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
 
-project(cave-traversal-tool VERSION 1.0.2)
+project(cave-traversal-tool VERSION 1.0.3)
 
 # Project version : exposed to C++ as CAVE_TRAVERSAL_TOOL_VERSION_MAJOR / _MINOR / _PATCH defines
 add_compile_definitions(

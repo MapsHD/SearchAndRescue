@@ -2,6 +2,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -615,6 +616,17 @@ int main()
                     ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
                     ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
                 }
+
+                // Orthographic : the projection ignores the camera position, so moving the camera
+                // along the view axis would not change the image. Use the view axis distance as a
+                // dolly instead : the orthographic box grows / shrinks with the distance, so the
+                // distance slider has the same visual effect as in the perspective case.
+                if (ctx.cameras[i].projection_type == ProjectionType::ORTHOGRAPHIC)
+                {
+                    const float fov_half_tan         = std::tan(glm::radians(ctx.cameras[i].fov_y * 0.5f));
+                    ctx.cameras[i].ortho_half_height = std::max(0.01f, ctx.view_axis_distance[i] * fov_half_tan);
+                    ctx.cameras[i].ortho_zoom        = 1.0f;
+                }
             }
             else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
             {
@@ -718,8 +730,8 @@ int main()
                         continue;
                     }
 
-                    const Camera& cam = ctx.cameras[i];
-                    const Viewport vp = ctx.viewport_for(i);
+                    const Camera&  cam = ctx.cameras[i];
+                    const Viewport vp  = ctx.viewport_for(i);
                     if (vp.w <= 0 || vp.h <= 0)
                     {
                         continue;
@@ -731,8 +743,8 @@ int main()
 
                     // Top-left corner of the viewport in ImGui (screen) coordinates
                     // OpenGL vp.y is measured from the bottom, so screen_top = height - (vp.y + vp.h)
-                    const float vp_screen_x = static_cast<float>(vp.x);
-                    const float vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
+                    const float  vp_screen_x = static_cast<float>(vp.x);
+                    const float  vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
                     const ImVec2 clip_min(vp_screen_x, vp_screen_y);
                     const ImVec2 clip_max(vp_screen_x + static_cast<float>(vp.w),
                                           vp_screen_y + static_cast<float>(vp.h));
@@ -812,15 +824,10 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = pick_cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
-                    glm::mat4 pick_view       = pick_cam.get_view();
+                    glm::vec3 ray_origin{};
+                    glm::vec3 ray_dir{};
+                    pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
-                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
-                    ray_eye.z         = -1.0f;
-                    ray_eye.w         = 0.0f;
-
-                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
@@ -836,7 +843,7 @@ int main()
 
                         for (size_t i = 0; i < _project_data.trajectory_positions.size(); ++i)
                         {
-                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - camera_pos;
+                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - ray_origin;
                             const float     t        = glm::dot(to_point, ray_dir);
 
                             if (t <= 0.0f)
@@ -899,7 +906,7 @@ int main()
                             {
                                 if (std::abs(ray_dir[i]) < 1e-6f)
                                 {
-                                    if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
+                                    if (ray_origin[i] < bmin[i] || ray_origin[i] > bmax[i])
                                     {
                                         tmin = tmax = -1.0f;
                                         break;
@@ -908,8 +915,8 @@ int main()
                                 else
                                 {
                                     float invD = 1.0f / ray_dir[i];
-                                    float t0   = (bmin[i] - camera_pos[i]) * invD;
-                                    float t1   = (bmax[i] - camera_pos[i]) * invD;
+                                    float t0   = (bmin[i] - ray_origin[i]) * invD;
+                                    float t1   = (bmax[i] - ray_origin[i]) * invD;
                                     if (t0 > t1)
                                         std::swap(t0, t1);
                                     tmin = (i == 0) ? t0 : std::max(tmin, t0);
@@ -945,7 +952,7 @@ int main()
                                 {
                                     for (const PointIntensity& p : lod->points)
                                     {
-                                        const glm::vec3 to_point = p.position - camera_pos;
+                                        const glm::vec3 to_point = p.position - ray_origin;
                                         const float     t        = glm::dot(to_point, ray_dir);
 
                                         if (t <= 0.0f)
@@ -1021,15 +1028,10 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = pick_cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
-                    glm::mat4 pick_view       = pick_cam.get_view();
+                    glm::vec3 ray_origin{};
+                    glm::vec3 ray_dir{};
+                    pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
-                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
-                    ray_eye.z         = -1.0f;
-                    ray_eye.w         = 0.0f;
-
-                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
@@ -1047,14 +1049,14 @@ int main()
                         {
                             for (const PointIntensity& p : lod->points)
                             {
-                                const glm::vec3 to_point = p.position - camera_pos;
+                                const glm::vec3 to_point = p.position - ray_origin;
 
                                 // t = projection onto the ray
                                 const float t = glm::dot(to_point, ray_dir);
 
                                 // Respect camera near/far: the point must be visible
                                 // (its depth along camera_forward must lie within [near_plane, far_plane])
-                                const float depth = glm::dot(to_point, camera_forward);
+                                const float depth = glm::dot(p.position - camera_pos, camera_forward);
                                 if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
                                 {
                                     continue;

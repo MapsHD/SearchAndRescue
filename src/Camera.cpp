@@ -45,6 +45,49 @@ float Camera::world_units_per_pixel(float depth) const
     return 2.0f * d * std::tan(glm::radians(fov_y * 0.5f)) / std::max(1.0f, viewport_h);
 }
 
+void Camera::screen_ray(float ndc_x, float ndc_y, float viewport_width, float viewport_height,
+                        glm::vec3& out_origin, glm::vec3& out_direction) const
+{
+    const glm::mat4 proj = get_projection(viewport_width, viewport_height);
+    const glm::mat4 view = get_view();
+
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        // Parallel projection : every pixel shares the camera forward direction.
+        // The origin slides across the orthographic box at the near plane distance.
+        const auto [half_w, half_h] = ortho_extents(viewport_width, viewport_height);
+
+        const glm::vec3 forward = glm::normalize(target - position);
+
+        glm::vec3 right = glm::cross(forward, up);
+        if (glm::length(right) < 1e-4f)
+        {
+            // forward is parallel to up : pick any perpendicular axis
+            right = glm::cross(forward, glm::vec3(0.0f, 0.0f, 1.0f));
+            if (glm::length(right) < 1e-4f)
+            {
+                right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+        }
+        right = glm::normalize(right);
+
+        const glm::vec3 cam_up = glm::normalize(glm::cross(right, forward));
+
+        out_origin    = position + right * (ndc_x * half_w) + cam_up * (ndc_y * half_h);
+        out_direction = forward;
+        return;
+    }
+
+    // Perspective : unproject the near-plane point and aim from the camera position
+    const glm::vec4 ray_clip(ndc_x, ndc_y, -1.0f, 1.0f);
+    glm::vec4       ray_eye = glm::inverse(proj) * ray_clip;
+    ray_eye.z               = -1.0f;
+    ray_eye.w               = 0.0f;
+
+    out_origin    = position;
+    out_direction = glm::normalize(glm::vec3(glm::inverse(view) * ray_eye));
+}
+
 bool any_projection_differs(const MultiViewContext& ctx, int active_count)
 {
     for (int i = 1; i < active_count && i < MultiViewContext::MAX_CAMERAS; ++i)
