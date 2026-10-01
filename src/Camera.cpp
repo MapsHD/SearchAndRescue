@@ -1,6 +1,7 @@
 #include <cave-traversal-tool/Camera.h>
 
 #include <algorithm>
+#include <cmath>
 
 // clang-format off
 #include <GLFW/glfw3.h>
@@ -10,6 +11,94 @@
 glm::mat4 Camera::get_view() const
 {
     return glm::lookAt(position, target, up);
+}
+
+std::array<float, 2> Camera::ortho_extents(float viewport_width, float viewport_height) const
+{
+    const float aspect = viewport_height > 0.0f ? viewport_width / viewport_height : 1.0f;
+    const float half_h = std::max(1e-4f, ortho_half_height / std::max(1e-4f, ortho_zoom));
+    return {half_h * aspect, half_h};
+}
+
+glm::mat4 Camera::get_projection(float viewport_width, float viewport_height) const
+{
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        const auto [half_w, half_h] = ortho_extents(viewport_width, viewport_height);
+        return glm::ortho(-half_w, half_w, -half_h, half_h, near_plane, far_plane);
+    }
+
+    return glm::perspectiveFov(glm::radians(fov_y),
+                               std::max(1.0f, viewport_width), std::max(1.0f, viewport_height),
+                               near_plane, far_plane);
+}
+
+float Camera::world_units_per_pixel(float depth) const
+{
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        const float half_h = std::max(1e-4f, ortho_half_height / std::max(1e-4f, ortho_zoom));
+        return (2.0f * half_h) / std::max(1.0f, viewport_h);
+    }
+
+    const float d = std::max(0.01f, depth);
+    return 2.0f * d * std::tan(glm::radians(fov_y * 0.5f)) / std::max(1.0f, viewport_h);
+}
+
+void Camera::screen_ray(float ndc_x, float ndc_y, float viewport_width, float viewport_height,
+                        glm::vec3& out_origin, glm::vec3& out_direction) const
+{
+    const glm::mat4 proj = get_projection(viewport_width, viewport_height);
+    const glm::mat4 view = get_view();
+
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        // Parallel projection : every pixel shares the camera forward direction.
+        // The origin slides across the orthographic box at the near plane distance.
+        const auto [half_w, half_h] = ortho_extents(viewport_width, viewport_height);
+
+        const glm::vec3 forward = glm::normalize(target - position);
+
+        glm::vec3 right = glm::cross(forward, up);
+        if (glm::length(right) < 1e-4f)
+        {
+            // forward is parallel to up : pick any perpendicular axis
+            right = glm::cross(forward, glm::vec3(0.0f, 0.0f, 1.0f));
+            if (glm::length(right) < 1e-4f)
+            {
+                right = glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f));
+            }
+        }
+        right = glm::normalize(right);
+
+        const glm::vec3 cam_up = glm::normalize(glm::cross(right, forward));
+
+        out_origin    = position + right * (ndc_x * half_w) + cam_up * (ndc_y * half_h);
+        out_direction = forward;
+        return;
+    }
+
+    // Perspective : unproject the near-plane point and aim from the camera position
+    const glm::vec4 ray_clip(ndc_x, ndc_y, -1.0f, 1.0f);
+    glm::vec4       ray_eye = glm::inverse(proj) * ray_clip;
+    ray_eye.z               = -1.0f;
+    ray_eye.w               = 0.0f;
+
+    out_origin    = position;
+    out_direction = glm::normalize(glm::vec3(glm::inverse(view) * ray_eye));
+}
+
+bool any_projection_differs(const MultiViewContext& ctx, int active_count)
+{
+    for (int i = 1; i < active_count && i < MultiViewContext::MAX_CAMERAS; ++i)
+    {
+        if (ctx.cameras[i].projection_type != ctx.cameras[0].projection_type)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void Camera::rotate(double dx, double dy)
@@ -53,6 +142,16 @@ void Camera::zoom(double scroll)
 {
     glm::vec3 forward     = glm::normalize(target - position);
     float     zoom_amount = static_cast<float>(scroll) * 0.5f;
+
+    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    {
+        // Orthographic : there is no perspective foreshortening, so dolly is faked by
+        // zooming the projection box. scroll > 0 (wheel up) magnifies, scroll < 0 zooms out.
+        // Planes are left untouched, the user controls them with the sliders.
+        const float factor = std::pow(0.9f, static_cast<float>(scroll));
+        ortho_zoom         = std::clamp(ortho_zoom * factor, 1e-3f, 1e4f);
+        return;
+    }
 
     float distance     = glm::length(target - position);
     float min_distance = 0.1f;

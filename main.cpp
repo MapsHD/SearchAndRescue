@@ -2,6 +2,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -260,6 +261,16 @@ int main()
         int32_t width  = 0;
         int32_t height = 0;
         glfwGetWindowSize(window, &width, &height);
+        int32_t framebuffer_width  = 0;
+        int32_t framebuffer_height = 0;
+        glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+
+        if (width <= 0 || height <= 0 || framebuffer_width <= 0 || framebuffer_height <= 0)
+        {
+            glfwWaitEvents();
+            continue;
+        }
+
         ctx.window_width  = width;
         ctx.window_height = height;
 
@@ -270,7 +281,7 @@ int main()
             ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
         }
 
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, framebuffer_width, framebuffer_height);
 
         glClearColor(_user_settings.opengl.clear_color.x, _user_settings.opengl.clear_color.y, _user_settings.opengl.clear_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -527,11 +538,11 @@ int main()
             float    rect_w = static_cast<float>(vp0.w);
             float    rect_h = static_cast<float>(vp0.h);
 
-            glm::mat4 gizmo_proj = glm::perspectiveFov(glm::radians(ctx.cameras[0].fov_y), rect_w, rect_h, ctx.cameras[0].near_plane, ctx.cameras[0].far_plane);
+            glm::mat4 gizmo_proj = ctx.cameras[0].get_projection(rect_w, rect_h);
             glm::mat4 gizmo_view = ctx.cameras[0].get_view();
 
             ImGuizmo::BeginFrame();
-            ImGuizmo::SetOrthographic(false);
+            ImGuizmo::SetOrthographic(ctx.cameras[0].projection_type == ProjectionType::ORTHOGRAPHIC);
             ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
             ImGuizmo::SetRect(rect_x, rect_y, rect_w, rect_h);
 
@@ -594,11 +605,27 @@ int main()
             {
                 update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
 
-                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                // Non free look camera : planes are always derived from the current distance to the stretcher pose
                 if (ctx.symmetric_planes[i])
                 {
                     ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
                     ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
+                else
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
+                }
+
+                // Orthographic : the projection ignores the camera position, so moving the camera
+                // along the view axis would not change the image. Use the view axis distance as a
+                // dolly instead : the orthographic box grows / shrinks with the distance, so the
+                // distance slider has the same visual effect as in the perspective case.
+                if (ctx.cameras[i].projection_type == ProjectionType::ORTHOGRAPHIC)
+                {
+                    const float fov_half_tan         = std::tan(glm::radians(ctx.cameras[i].fov_y * 0.5f));
+                    ctx.cameras[i].ortho_half_height = std::max(0.01f, ctx.view_axis_distance[i] * fov_half_tan);
+                    ctx.cameras[i].ortho_zoom        = 1.0f;
                 }
             }
             else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
@@ -686,71 +713,89 @@ int main()
             }
         }
 
-        // MEASUREMENT LABELS : project each midpoint through VP0 and draw a 2-D distance label
+        // MEASUREMENT LABELS : project each midpoint through every active viewport and draw 2-D distance labels
         if (_user_settings.measurements.draw_enable)
         {
             const MeasurementState& ms = _project_data.measurements;
 
             if (!ms.entries.empty())
             {
-                const Camera&  cam0 = ctx.cameras[0];
-                const Viewport vp0  = ctx.viewport_for(0);
-
-                const glm::mat4 proj0 = glm::perspectiveFov(
-                    glm::radians(cam0.fov_y),
-                    static_cast<float>(vp0.w), static_cast<float>(vp0.h),
-                    cam0.near_plane, cam0.far_plane);
-                const glm::mat4 view0 = cam0.get_view();
-                const glm::mat4 MVP0  = proj0 * view0;
-
                 ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
 
-                // Top-left corner of VP0 in ImGui (screen) coordinates
-                // OpenGL vp0.y is measured from the bottom, so screen_top = height - (vp0.y + vp0.h)
-                const float vp_screen_x = static_cast<float>(vp0.x);
-                const float vp_screen_y = static_cast<float>(height - (vp0.y + vp0.h));
-
-                for (size_t i = 0; i < ms.entries.size(); ++i)
+                for (int i = 0; i < count; ++i)
                 {
-                    const MeasurementEntry& e = ms.entries[i];
-
-                    const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
-                    const glm::vec4 clip     = MVP0 * glm::vec4(midpoint, 1.0f);
-
-                    // Behind the camera → skip
-                    if (clip.w <= 0.0f)
+                    // Per-viewport toggle : measurement labels can be disabled for this viewport
+                    if (!ctx.draw_measurement_labels[i])
                     {
                         continue;
                     }
 
-                    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-
-                    // Outside the NDC cube → skip
-                    if (ndc.x < -1.0f || ndc.x > 1.0f ||
-                        ndc.y < -1.0f || ndc.y > 1.0f ||
-                        ndc.z < -1.0f || ndc.z > 1.0f)
+                    const Camera&  cam = ctx.cameras[i];
+                    const Viewport vp  = ctx.viewport_for(i);
+                    if (vp.w <= 0 || vp.h <= 0)
                     {
                         continue;
                     }
 
-                    // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
-                    const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp0.w);
-                    const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp0.h);
+                    const glm::mat4 proj = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
+                    const glm::mat4 view = cam.get_view();
+                    const glm::mat4 MVP  = proj * view;
 
-                    char label[64];
-                    std::snprintf(label, sizeof(label), "%zu: %.4f m", i + 1, e.distance_m);
+                    // Top-left corner of the viewport in ImGui (screen) coordinates
+                    // OpenGL vp.y is measured from the bottom, so screen_top = height - (vp.y + vp.h)
+                    const float  vp_screen_x = static_cast<float>(vp.x);
+                    const float  vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
+                    const ImVec2 clip_min(vp_screen_x, vp_screen_y);
+                    const ImVec2 clip_max(vp_screen_x + static_cast<float>(vp.w),
+                                          vp_screen_y + static_cast<float>(vp.h));
 
-                    const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
-                    const ImVec2 text_size = ImGui::CalcTextSize(label);
+                    for (size_t j = 0; j < ms.entries.size(); ++j)
+                    {
+                        const MeasurementEntry& e = ms.entries[j];
 
-                    // Label : near-black background with white text, independent of the measurement line colour
-                    dl->AddRectFilled(
-                        ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
-                        ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
-                        IM_COL32(10, 10, 10, 220),
-                        2.0f);
+                        const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
+                        const glm::vec4 clip     = MVP * glm::vec4(midpoint, 1.0f);
 
-                    dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+                        // Behind the camera → skip
+                        if (clip.w <= 0.0f)
+                        {
+                            continue;
+                        }
+
+                        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+                        // Outside the NDC cube → skip
+                        if (ndc.x < -1.0f || ndc.x > 1.0f ||
+                            ndc.y < -1.0f || ndc.y > 1.0f ||
+                            ndc.z < -1.0f || ndc.z > 1.0f)
+                        {
+                            continue;
+                        }
+
+                        // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
+                        const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp.w);
+                        const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp.h);
+
+                        char label[64];
+                        std::snprintf(label, sizeof(label), "%zu: %.4f m", j + 1, e.distance_m);
+
+                        const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
+                        const ImVec2 text_size = ImGui::CalcTextSize(label);
+
+                        // Clip the label inside the viewport so it never bleeds into neighbouring viewports
+                        dl->PushClipRect(clip_min, clip_max, true);
+
+                        // Label : near-black background with white text, independent of the measurement line colour
+                        dl->AddRectFilled(
+                            ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
+                            ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
+                            IM_COL32(10, 10, 10, 220),
+                            2.0f);
+
+                        dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+
+                        dl->PopClipRect();
+                    }
                 }
             }
         }
@@ -779,15 +824,10 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
-                    glm::mat4 pick_view       = pick_cam.get_view();
+                    glm::vec3 ray_origin{};
+                    glm::vec3 ray_dir{};
+                    pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
-                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
-                    ray_eye.z         = -1.0f;
-                    ray_eye.w         = 0.0f;
-
-                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
@@ -803,7 +843,7 @@ int main()
 
                         for (size_t i = 0; i < _project_data.trajectory_positions.size(); ++i)
                         {
-                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - camera_pos;
+                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - ray_origin;
                             const float     t        = glm::dot(to_point, ray_dir);
 
                             if (t <= 0.0f)
@@ -866,7 +906,7 @@ int main()
                             {
                                 if (std::abs(ray_dir[i]) < 1e-6f)
                                 {
-                                    if (camera_pos[i] < bmin[i] || camera_pos[i] > bmax[i])
+                                    if (ray_origin[i] < bmin[i] || ray_origin[i] > bmax[i])
                                     {
                                         tmin = tmax = -1.0f;
                                         break;
@@ -875,8 +915,8 @@ int main()
                                 else
                                 {
                                     float invD = 1.0f / ray_dir[i];
-                                    float t0   = (bmin[i] - camera_pos[i]) * invD;
-                                    float t1   = (bmax[i] - camera_pos[i]) * invD;
+                                    float t0   = (bmin[i] - ray_origin[i]) * invD;
+                                    float t1   = (bmax[i] - ray_origin[i]) * invD;
                                     if (t0 > t1)
                                         std::swap(t0, t1);
                                     tmin = (i == 0) ? t0 : std::max(tmin, t0);
@@ -912,7 +952,7 @@ int main()
                                 {
                                     for (const PointIntensity& p : lod->points)
                                     {
-                                        const glm::vec3 to_point = p.position - camera_pos;
+                                        const glm::vec3 to_point = p.position - ray_origin;
                                         const float     t        = glm::dot(to_point, ray_dir);
 
                                         if (t <= 0.0f)
@@ -988,15 +1028,10 @@ int main()
                     float x_ndc = (2.0f * static_cast<float>(local_x) / static_cast<float>(vp.w)) - 1.0f;
                     float y_ndc = (2.0f * static_cast<float>(local_gl_y) / static_cast<float>(vp.h)) - 1.0f;
 
-                    glm::mat4 pick_projection = glm::perspectiveFov(glm::radians(pick_cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), pick_cam.near_plane, pick_cam.far_plane);
-                    glm::mat4 pick_view       = pick_cam.get_view();
+                    glm::vec3 ray_origin{};
+                    glm::vec3 ray_dir{};
+                    pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    glm::vec4 ray_clip(x_ndc, y_ndc, -1.0f, 1.0f);
-                    glm::vec4 ray_eye = glm::inverse(pick_projection) * ray_clip;
-                    ray_eye.z         = -1.0f;
-                    ray_eye.w         = 0.0f;
-
-                    glm::vec3 ray_dir        = glm::normalize(glm::vec3(glm::inverse(pick_view) * ray_eye));
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
@@ -1014,14 +1049,14 @@ int main()
                         {
                             for (const PointIntensity& p : lod->points)
                             {
-                                const glm::vec3 to_point = p.position - camera_pos;
+                                const glm::vec3 to_point = p.position - ray_origin;
 
                                 // t = projection onto the ray
                                 const float t = glm::dot(to_point, ray_dir);
 
                                 // Respect camera near/far: the point must be visible
                                 // (its depth along camera_forward must lie within [near_plane, far_plane])
-                                const float depth = glm::dot(to_point, camera_forward);
+                                const float depth = glm::dot(p.position - camera_pos, camera_forward);
                                 if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
                                 {
                                     continue;
@@ -1109,9 +1144,13 @@ int main()
 
         auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
         {
-            glViewport(vp.x, vp.y, vp.w, vp.h);
+            const int pixel_x = static_cast<int>(static_cast<int64_t>(vp.x) * framebuffer_width / width);
+            const int pixel_y = static_cast<int>(static_cast<int64_t>(vp.y) * framebuffer_height / height);
+            const int pixel_w = static_cast<int>(static_cast<int64_t>(vp.x + vp.w) * framebuffer_width / width) - pixel_x;
+            const int pixel_h = static_cast<int>(static_cast<int64_t>(vp.y + vp.h) * framebuffer_height / height) - pixel_y;
+            glViewport(pixel_x, pixel_y, pixel_w, pixel_h);
 
-            glm::mat4 projection = glm::perspectiveFov(glm::radians(cam.fov_y), static_cast<float>(vp.w), static_cast<float>(vp.h), cam.near_plane, cam.far_plane);
+            glm::mat4 projection = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
             glm::mat4 view       = cam.get_view();
             glm::mat4 MVP        = projection * view;
 
@@ -1400,6 +1439,16 @@ int main()
         for (int i = 0; i < count; ++i)
         {
             draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
+        }
+
+        // When viewports use different projection types the camera pass must be repeated so the
+        // projected pixel sizes used for LOD selection match each viewport's projection.
+        if (any_projection_differs(ctx, count))
+        {
+            for (int i = count; i < MultiViewContext::MAX_CAMERAS; ++i)
+            {
+                draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
+            }
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
