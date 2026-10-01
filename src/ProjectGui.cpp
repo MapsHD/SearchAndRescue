@@ -115,20 +115,10 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     {
                         ctx.cameras[i].projection_type = static_cast<ProjectionType>(projection);
 
-                        if (ctx.cameras[i].projection_type == ProjectionType::ORTHOGRAPHIC)
-                        {
-                            // Box frustum : keep the same near / far planes as the perspective view.
-                            // They only diverge from perspective in locked (non free look) camera modes.
-                            ctx.cameras[i].ortho_half_height = std::max(0.5f, glm::length(ctx.cameras[i].target - ctx.cameras[i].position) * 0.5f);
-                            ctx.cameras[i].ortho_zoom        = 1.0f;
-                        }
-                        else
-                        {
-                            // Perspective : near must be positive, far follows the orbit distance
-                            const float dist          = glm::length(ctx.cameras[i].target - ctx.cameras[i].position);
-                            ctx.cameras[i].near_plane = 0.1f;
-                            ctx.cameras[i].far_plane  = std::max(1000.0f, dist + 100.0f);
-                        }
+                        // On change just reset the planes to a sane range and let the
+                        // user adjust them with the sliders below (both projection types).
+                        ctx.cameras[i].near_plane = 0.01f;
+                        ctx.cameras[i].far_plane  = 1000.0f;
                     }
                     if (ImGui::IsItemHovered())
                     {
@@ -143,6 +133,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ctx.camera_modes[i] = static_cast<CameraMode>(mode);
                     if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
                     {
+                        // Entering a non free look camera : calculate planes from the view distance
                         if (ctx.symmetric_planes[i])
                         {
                             ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
@@ -156,7 +147,8 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     }
                     else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
                     {
-                        ctx.cameras[i].near_plane = 0.1f;
+                        // Back to free look : reset planes for manual control
+                        ctx.cameras[i].near_plane = 0.01f;
                         ctx.cameras[i].far_plane  = 1000.0f;
                         unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
                     }
@@ -169,26 +161,19 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
                 if (locked)
                 {
-                    // Plane control mode : symmetric (single slider, planes derived from distance) vs asymmetric (independent planes)
+                    // Non free look camera : planes are calculated each frame from the view distance,
+                    // so they are shown read-only and only the distance / offset can be edited here.
                     const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
                     int         plane_mode         = ctx.symmetric_planes[i] ? 0 : 1;
                     if (ImGui::Combo(("plane_mode##" + std::to_string(i)).c_str(), &plane_mode, plane_mode_names, 2))
                     {
                         ctx.symmetric_planes[i] = (plane_mode == 0);
-
-                        if (ctx.symmetric_planes[i])
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                        }
                     }
+
+                    ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
 
                     if (ctx.symmetric_planes[i])
                     {
-                        // Symmetrical : single slider controls camera distance from the stretcher pose,
-                        // planes are enforced each frame as distance -+ symmetric_plane_offset
-                        ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
-
                         ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f");
 
                         if (ImGui::Button(("Reset offset (1.25m)##" + std::to_string(i)).c_str()))
@@ -196,66 +181,15 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                             ctx.symmetric_plane_offset[i] = 1.25f;
                         }
                     }
-                    else if (is_ortho)
-                    {
-                        // Orthographic asymmetric : the box spans [near, far] along the view axis and
-                        // near may be negative, so an extra button keeps the box around the camera distance.
-                        float old_dist = ctx.view_axis_distance[i];
-                        if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
-                        {
-                            float delta = ctx.view_axis_distance[i] - old_dist;
-                            ctx.cameras[i].near_plane += delta;
-                            ctx.cameras[i].far_plane += delta;
-                        }
 
-                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, -10000.0f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                        if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                        {
-                            ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                        }
-
-                        if (ImGui::Button(("Center box on view distance##" + std::to_string(i)).c_str()))
-                        {
-                            const float half          = std::max(0.5f * (ctx.cameras[i].far_plane - ctx.cameras[i].near_plane), 1.0f);
-                            ctx.cameras[i].near_plane = ctx.view_axis_distance[i] - half;
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + half;
-                        }
-                    }
-                    else
-                    {
-                        // Asymmetrical : independent distance / near / far control (previous behaviour)
-                        float old_dist = ctx.view_axis_distance[i];
-                        if (ImGui::DragFloat(("view_axis_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f"))
-                        {
-                            float delta               = ctx.view_axis_distance[i] - old_dist;
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.cameras[i].near_plane + delta);
-                            ctx.cameras[i].far_plane  = std::max(ctx.cameras[i].near_plane + 0.05f, ctx.cameras[i].far_plane + delta);
-                        }
-
-                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                        if (ctx.cameras[i].near_plane < 0.01f)
-                        {
-                            ctx.cameras[i].near_plane = 0.01f;
-                        }
-                        if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                        {
-                            ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                        }
-
-                        if (ImGui::Button(("Reset planes (+-1m)##" + std::to_string(i)).c_str()))
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.0f);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.0f;
-                        }
-                    }
+                    ImGui::BeginDisabled(true);
+                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                    ImGui::EndDisabled();
                 }
                 else if (is_ortho)
                 {
-                    // Free orbit : orthographic box - view-space half height + [near, far] depth range
+                    // Free orbit : orthographic box - view-space half height + 0.01..1000 depth range
                     ImGui::DragFloat(("ortho_half_height##" + std::to_string(i)).c_str(), &ctx.cameras[i].ortho_half_height, 0.05f, 0.01f, 10000.0f, "%.3f");
                     if (ImGui::IsItemHovered())
                     {
@@ -268,37 +202,14 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                         ImGui::SetTooltip("Orthographic zoom : > 1 magnifies, < 1 zooms out (also changed with the scroll wheel)");
                     }
 
-                    // Orthographic near may be negative : the box spans [near, far] along the view axis
-                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, -10000.0f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                    {
-                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                    }
-
-                    if (ImGui::Button(("Center box on view distance##" + std::to_string(i)).c_str()))
-                    {
-                        const float dist          = glm::length(ctx.cameras[i].target - ctx.cameras[i].position);
-                        const float half          = std::max(0.5f * (ctx.cameras[i].far_plane - ctx.cameras[i].near_plane), 1.0f);
-                        ctx.cameras[i].near_plane = dist - half;
-                        ctx.cameras[i].far_plane  = dist + half;
-                    }
+                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
                 }
                 else
                 {
-                    // Free orbit (and viewport 0) : independent near / far plane control
-                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, ctx.cameras[i].far_plane - 0.01f, "%.3f");
-                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, ctx.cameras[i].near_plane + 0.01f, 10000.0f, "%.3f");
-
-                    if (ctx.cameras[i].near_plane < 0.01f)
-                    {
-                        ctx.cameras[i].near_plane = 0.01f;
-                    }
-                    if (ctx.cameras[i].far_plane <= ctx.cameras[i].near_plane)
-                    {
-                        ctx.cameras[i].far_plane = ctx.cameras[i].near_plane + 0.05f;
-                    }
+                    // Free orbit (and viewport 0) : independent near / far plane control, 0.01..1000
+                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
                 }
             }
 

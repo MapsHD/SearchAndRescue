@@ -99,22 +99,18 @@ void Camera::zoom(double scroll)
 {
     glm::vec3 forward     = glm::normalize(target - position);
     float     zoom_amount = static_cast<float>(scroll) * 0.5f;
-    float     distance    = glm::length(target - position);
 
     if (projection_type == ProjectionType::ORTHOGRAPHIC)
     {
         // Orthographic : there is no perspective foreshortening, so dolly is faked by
         // zooming the projection box. scroll > 0 (wheel up) magnifies, scroll < 0 zooms out.
+        // Planes are left untouched, the user controls them with the sliders.
         const float factor = std::pow(0.9f, static_cast<float>(scroll));
         ortho_zoom         = std::clamp(ortho_zoom * factor, 1e-3f, 1e4f);
-
-        // Keep the near / far box around the orbit target so the scene stays inside the frustum
-        const float half_depth = std::max(0.5f * (far_plane - near_plane), 1.0f);
-        near_plane             = distance - half_depth;
-        far_plane              = distance + half_depth;
         return;
     }
 
+    float distance     = glm::length(target - position);
     float min_distance = 0.1f;
 
     float new_distance = distance - zoom_amount;

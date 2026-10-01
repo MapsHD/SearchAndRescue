@@ -604,11 +604,16 @@ int main()
             {
                 update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
 
-                // Symmetric plane mode : always derive near/far from the current distance to the stretcher pose
+                // Non free look camera : planes are always derived from the current distance to the stretcher pose
                 if (ctx.symmetric_planes[i])
                 {
                     ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
                     ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                }
+                else
+                {
+                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
+                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
                 }
             }
             else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
