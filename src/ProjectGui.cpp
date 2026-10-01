@@ -86,6 +86,12 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 }
                 ImGui::EndDisabled();
 
+                ImGui::Checkbox(("draw_measurement_labels##" + std::to_string(i)).c_str(), &ctx.draw_measurement_labels[i]);
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("Show measurement value labels in this viewport");
+                }
+
                 // Per-camera FOV (all viewports)
                 if (ImGui::DragFloat(("fov_y##" + std::to_string(i)).c_str(), &ctx.cameras[i].fov_y, 0.5f, 1.0f, 170.0f, "%.1f deg"))
                 {

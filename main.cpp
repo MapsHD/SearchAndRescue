@@ -696,71 +696,92 @@ int main()
             }
         }
 
-        // MEASUREMENT LABELS : project each midpoint through VP0 and draw a 2-D distance label
+        // MEASUREMENT LABELS : project each midpoint through every active viewport and draw 2-D distance labels
         if (_user_settings.measurements.draw_enable)
         {
             const MeasurementState& ms = _project_data.measurements;
 
             if (!ms.entries.empty())
             {
-                const Camera&  cam0 = ctx.cameras[0];
-                const Viewport vp0  = ctx.viewport_for(0);
-
-                const glm::mat4 proj0 = glm::perspectiveFov(
-                    glm::radians(cam0.fov_y),
-                    static_cast<float>(vp0.w), static_cast<float>(vp0.h),
-                    cam0.near_plane, cam0.far_plane);
-                const glm::mat4 view0 = cam0.get_view();
-                const glm::mat4 MVP0  = proj0 * view0;
-
                 ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
 
-                // Top-left corner of VP0 in ImGui (screen) coordinates
-                // OpenGL vp0.y is measured from the bottom, so screen_top = height - (vp0.y + vp0.h)
-                const float vp_screen_x = static_cast<float>(vp0.x);
-                const float vp_screen_y = static_cast<float>(height - (vp0.y + vp0.h));
-
-                for (size_t i = 0; i < ms.entries.size(); ++i)
+                for (int i = 0; i < count; ++i)
                 {
-                    const MeasurementEntry& e = ms.entries[i];
-
-                    const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
-                    const glm::vec4 clip     = MVP0 * glm::vec4(midpoint, 1.0f);
-
-                    // Behind the camera → skip
-                    if (clip.w <= 0.0f)
+                    // Per-viewport toggle : measurement labels can be disabled for this viewport
+                    if (!ctx.draw_measurement_labels[i])
                     {
                         continue;
                     }
 
-                    const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-
-                    // Outside the NDC cube → skip
-                    if (ndc.x < -1.0f || ndc.x > 1.0f ||
-                        ndc.y < -1.0f || ndc.y > 1.0f ||
-                        ndc.z < -1.0f || ndc.z > 1.0f)
+                    const Camera& cam = ctx.cameras[i];
+                    const Viewport vp = ctx.viewport_for(i);
+                    if (vp.w <= 0 || vp.h <= 0)
                     {
                         continue;
                     }
 
-                    // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
-                    const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp0.w);
-                    const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp0.h);
+                    const glm::mat4 proj = glm::perspectiveFov(
+                        glm::radians(cam.fov_y),
+                        static_cast<float>(vp.w), static_cast<float>(vp.h),
+                        cam.near_plane, cam.far_plane);
+                    const glm::mat4 view = cam.get_view();
+                    const glm::mat4 MVP  = proj * view;
 
-                    char label[64];
-                    std::snprintf(label, sizeof(label), "%zu: %.4f m", i + 1, e.distance_m);
+                    // Top-left corner of the viewport in ImGui (screen) coordinates
+                    // OpenGL vp.y is measured from the bottom, so screen_top = height - (vp.y + vp.h)
+                    const float vp_screen_x = static_cast<float>(vp.x);
+                    const float vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
+                    const ImVec2 clip_min(vp_screen_x, vp_screen_y);
+                    const ImVec2 clip_max(vp_screen_x + static_cast<float>(vp.w),
+                                          vp_screen_y + static_cast<float>(vp.h));
 
-                    const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
-                    const ImVec2 text_size = ImGui::CalcTextSize(label);
+                    for (size_t j = 0; j < ms.entries.size(); ++j)
+                    {
+                        const MeasurementEntry& e = ms.entries[j];
 
-                    // Label : near-black background with white text, independent of the measurement line colour
-                    dl->AddRectFilled(
-                        ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
-                        ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
-                        IM_COL32(10, 10, 10, 220),
-                        2.0f);
+                        const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
+                        const glm::vec4 clip     = MVP * glm::vec4(midpoint, 1.0f);
 
-                    dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+                        // Behind the camera → skip
+                        if (clip.w <= 0.0f)
+                        {
+                            continue;
+                        }
+
+                        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+                        // Outside the NDC cube → skip
+                        if (ndc.x < -1.0f || ndc.x > 1.0f ||
+                            ndc.y < -1.0f || ndc.y > 1.0f ||
+                            ndc.z < -1.0f || ndc.z > 1.0f)
+                        {
+                            continue;
+                        }
+
+                        // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
+                        const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp.w);
+                        const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp.h);
+
+                        char label[64];
+                        std::snprintf(label, sizeof(label), "%zu: %.4f m", j + 1, e.distance_m);
+
+                        const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
+                        const ImVec2 text_size = ImGui::CalcTextSize(label);
+
+                        // Clip the label inside the viewport so it never bleeds into neighbouring viewports
+                        dl->PushClipRect(clip_min, clip_max, true);
+
+                        // Label : near-black background with white text, independent of the measurement line colour
+                        dl->AddRectFilled(
+                            ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
+                            ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
+                            IM_COL32(10, 10, 10, 220),
+                            2.0f);
+
+                        dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+
+                        dl->PopClipRect();
+                    }
                 }
             }
         }

@@ -89,6 +89,10 @@ struct MultiViewContext
     bool  draw_axes_overlay[MAX_CAMERAS]{true, true, true, true};
     float axes_overlay_size[MAX_CAMERAS]{0.1f, 0.1f, 0.1f, 0.1f};
 
+    // Per-viewport drawing of measurement labels (measured value tags)
+    // Default : on for viewport 1, off for viewports 2, 3 and 4
+    bool draw_measurement_labels[MAX_CAMERAS]{true, false, false, false};
+
     int window_width{800};
     int window_height{600};
 
