@@ -85,7 +85,9 @@ struct MultiViewContext
     int32_t fixed_lod_index[MAX_CAMERAS]{0, 0, 0, 0};
 
     // World axes orientation overlay in the bottom-left of each viewport
-    bool draw_axes_overlay[MAX_CAMERAS]{true, true, true, true};
+    // size is a fraction of the viewport width and height
+    bool  draw_axes_overlay[MAX_CAMERAS]{true, true, true, true};
+    float axes_overlay_size[MAX_CAMERAS]{0.1f, 0.1f, 0.1f, 0.1f};
 
     int window_width{800};
     int window_height{600};

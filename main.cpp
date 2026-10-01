@@ -643,35 +643,36 @@ int main()
                 if (!ctx.draw_axes_overlay[i] || vp.w <= 0 || vp.h <= 0)
                     continue;
 
-                const float box_w = static_cast<float>(vp.w) * 0.1f;
-                const float box_h = static_cast<float>(vp.h) * 0.1f;
-                const ImVec2 box_min(static_cast<float>(vp.x) + 6.0f,
-                                     static_cast<float>(height - vp.y) - box_h - 6.0f);
-                const ImVec2 box_max(box_min.x + box_w, box_min.y + box_h);
-                const ImVec2 center((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
-                const float axis_length = std::min(box_w, box_h) * 0.32f;
+                const float     box_w = static_cast<float>(vp.w) * ctx.axes_overlay_size[i];
+                const float     box_h = static_cast<float>(vp.h) * ctx.axes_overlay_size[i];
+                const ImVec2    box_min(static_cast<float>(vp.x) + 6.0f,
+                                        static_cast<float>(height - vp.y) - box_h - 6.0f);
+                const ImVec2    box_max(box_min.x + box_w, box_min.y + box_h);
+                const ImVec2    center((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
+                const float     axis_length = std::min(box_w, box_h) * 0.32f;
                 const glm::mat3 view_rotation(ctx.cameras[i].get_view());
 
                 struct Axis
                 {
-                    ImVec2 end;
-                    float depth;
-                    ImU32 color;
+                    ImVec2      end;
+                    float       depth;
+                    ImU32       color;
                     const char* label;
                 };
                 std::array<Axis, 3> axes{};
-                const glm::vec3 directions[] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
-                const ImU32 colors[] = {IM_COL32(255, 90, 90, 230), IM_COL32(90, 255, 90, 230), IM_COL32(100, 155, 255, 230)};
-                const char* labels[] = {"X", "Y", "Z"};
+                const glm::vec3     directions[] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+                const ImU32         colors[]     = {IM_COL32(255, 90, 90, 230), IM_COL32(90, 255, 90, 230), IM_COL32(100, 155, 255, 230)};
+                const char*         labels[]     = {"X", "Y", "Z"};
                 for (int axis = 0; axis < 3; ++axis)
                 {
                     const glm::vec3 direction = view_rotation * directions[axis];
-                    axes[axis] = {ImVec2(center.x + direction.x * axis_length,
-                                         center.y - direction.y * axis_length),
-                                  direction.z, colors[axis], labels[axis]};
+                    axes[axis]                = {ImVec2(center.x + direction.x * axis_length,
+                                                        center.y - direction.y * axis_length),
+                                                 direction.z, colors[axis], labels[axis]};
                 }
                 // Draw farther axes first so the ones facing the camera remain legible.
-                std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b) { return a.depth < b.depth; });
+                std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b)
+                          { return a.depth < b.depth; });
 
                 dl->PushClipRect(box_min, box_max, true);
                 dl->AddRectFilled(box_min, box_max, IM_COL32(12, 12, 12, 120), 4.0f);
