@@ -606,15 +606,6 @@ ProgramShaderSources GetProgramShaderSources_Stretcher()
         .fragment_source_size = (int32_t)strlen(kStretcherFrag)};
 }
 
-ProgramShaderSources GetProgramShaderSources_ColoredLine()
-{
-    return ProgramShaderSources{
-        .vertex_source        = kColoredLineVert,
-        .vertex_source_size   = (int32_t)strlen(kColoredLineVert),
-        .fragment_source      = kColoredLineFrag,
-        .fragment_source_size = (int32_t)strlen(kColoredLineFrag)};
-}
-
 ProgramShaderSources GetProgramShaderSources_Trajectory()
 {
     return ProgramShaderSources{
@@ -633,4 +624,13 @@ ProgramShaderSources GetProgramShaderSources_TrajectoryOrientations()
         .geometry_source_size = (int32_t)strlen(kTrajectoryOrientationsGeom),
         .fragment_source      = kTrajectoryOrientationsFrag,
         .fragment_source_size = (int32_t)strlen(kTrajectoryOrientationsFrag)};
+}
+
+ProgramShaderSources GetProgramShaderSources_ColoredLine()
+{
+    return ProgramShaderSources{
+        .vertex_source        = kColoredLineVert,
+        .vertex_source_size   = (int32_t)strlen(kColoredLineVert),
+        .fragment_source      = kColoredLineFrag,
+        .fragment_source_size = (int32_t)strlen(kColoredLineFrag)};
 }
