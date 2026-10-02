@@ -1,17 +1,12 @@
 #pragma once
 
+#include <cave-traversal-tool/Enums.h>
+
 #include <array>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-// Camera projection type : perspective (fov based) or orthographic (parallel, box frustum)
-enum class ProjectionType : int
-{
-    PROJECTION_TYPE_PERSPECTIVE  = 0,
-    PROJECTION_TYPE_ORTHOGRAPHIC = 1
-};
 
 struct Camera
 {
@@ -67,30 +62,6 @@ struct Camera
     void rotate(double dx, double dy);
     void pan(double dx, double dy);
     void zoom(double scroll);
-};
-
-enum class CameraMode : int
-{
-    CAMERA_MODE_FREE_ORBIT = 0,
-    CAMERA_MODE_AXIS_X     = 1,
-    CAMERA_MODE_AXIS_NX    = 2,
-    CAMERA_MODE_AXIS_Y     = 3,
-    CAMERA_MODE_AXIS_NY    = 4,
-    CAMERA_MODE_AXIS_Z     = 5,
-    CAMERA_MODE_AXIS_NZ    = 6,
-    CAMERA_MODE_LOCAL_X    = 7,
-    CAMERA_MODE_LOCAL_NX   = 8,
-    CAMERA_MODE_LOCAL_Y    = 9,
-    CAMERA_MODE_LOCAL_NY   = 10,
-    CAMERA_MODE_LOCAL_Z    = 11,
-    CAMERA_MODE_LOCAL_NZ   = 12
-};
-
-enum class ViewportCount : int
-{
-    VIEWPORT_COUNT_ONE  = 1,
-    VIEWPORT_COUNT_TWO  = 2,
-    VIEWPORT_COUNT_FOUR = 4
 };
 
 struct Viewport

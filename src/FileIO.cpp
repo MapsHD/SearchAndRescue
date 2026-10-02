@@ -1,3 +1,4 @@
+#include <cave-traversal-tool/Enums.h>
 #include <cave-traversal-tool/FileIO.h>
 
 #include <glm/gtc/quaternion.hpp>
@@ -8,15 +9,6 @@
 #include <limits>
 #include <spdlog/spdlog.h>
 #include <sstream>
-
-enum class TrajectoryCsvLayout : int
-{
-    TRAJECTORY_CSV_LAYOUT_UNKNOWN            = 0,
-    TRAJECTORY_CSV_LAYOUT_MAT33_2_TIMESTAMPS = 1, // TS1, TS2, x, y, z, r00..r22  (14 columns)
-    TRAJECTORY_CSV_LAYOUT_MAT33_1_TIMESTAMP  = 2, // TS1,      x, y, z, r00..r22  (13 columns)
-    TRAJECTORY_CSV_LAYOUT_QUAT_2_TIMESTAMPS  = 3, // TS1, TS2, x, y, z, qx,qy,qz,qw (9 columns)
-    TRAJECTORY_CSV_LAYOUT_QUAT_1_TIMESTAMP   = 4  // TS1,      x, y, z, qx,qy,qz,qw (8 columns)
-};
 
 static size_t count_csv_columns(const std::string& line)
 {

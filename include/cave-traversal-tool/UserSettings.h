@@ -1,33 +1,11 @@
 #pragma once
 
+#include <cave-traversal-tool/Enums.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <filesystem>
-
-enum class PointCloudDisplayMode : int32_t
-{
-    POINT_CLOUD_DISPLAY_MODE_INTENSITY                          = 0,
-    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP                          = 1,
-    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_TIMES_INTENSITY          = 2,
-    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION                 = 3,
-    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION_TIMES_INTENSITY = 4
-};
-
-enum class ColorMapType : int32_t
-{
-    COLOR_MAP_TYPE_TURBO   = 0,
-    COLOR_MAP_TYPE_VIRIDIS = 1,
-    COLOR_MAP_TYPE_PLASMA  = 2,
-    COLOR_MAP_TYPE_MAGMA   = 3,
-    COLOR_MAP_TYPE_INFERNO = 4
-};
-
-enum class TrajectoryDisplayMode : int32_t
-{
-    TRAJECTORY_DISPLAY_MODE_LINE_STRIP = 0,
-    TRAJECTORY_DISPLAY_MODE_POINTS     = 1
-};
 
 struct UserSettings
 {
