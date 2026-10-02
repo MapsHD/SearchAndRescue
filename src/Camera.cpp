@@ -219,30 +219,30 @@ glm::vec3 axis_camera_offset(CameraMode mode, float distance, const glm::mat3& o
     {
         switch (mode)
         {
-        case CameraMode::AXIS_X:
-        case CameraMode::LOCAL_X:
+        case CameraMode::CAMERA_MODE_AXIS_X:
+        case CameraMode::CAMERA_MODE_LOCAL_X:
             return glm::vec3(1.0f, 0.0f, 0.0f);
-        case CameraMode::AXIS_NX:
-        case CameraMode::LOCAL_NX:
+        case CameraMode::CAMERA_MODE_AXIS_NX:
+        case CameraMode::CAMERA_MODE_LOCAL_NX:
             return glm::vec3(-1.0f, 0.0f, 0.0f);
-        case CameraMode::AXIS_Y:
-        case CameraMode::LOCAL_Y:
+        case CameraMode::CAMERA_MODE_AXIS_Y:
+        case CameraMode::CAMERA_MODE_LOCAL_Y:
             return glm::vec3(0.0f, 1.0f, 0.0f);
-        case CameraMode::AXIS_NY:
-        case CameraMode::LOCAL_NY:
+        case CameraMode::CAMERA_MODE_AXIS_NY:
+        case CameraMode::CAMERA_MODE_LOCAL_NY:
             return glm::vec3(0.0f, -1.0f, 0.0f);
-        case CameraMode::AXIS_Z:
-        case CameraMode::LOCAL_Z:
+        case CameraMode::CAMERA_MODE_AXIS_Z:
+        case CameraMode::CAMERA_MODE_LOCAL_Z:
             return glm::vec3(0.0f, 0.0f, 1.0f);
-        case CameraMode::AXIS_NZ:
-        case CameraMode::LOCAL_NZ:
+        case CameraMode::CAMERA_MODE_AXIS_NZ:
+        case CameraMode::CAMERA_MODE_LOCAL_NZ:
             return glm::vec3(0.0f, 0.0f, -1.0f);
         default:
             return glm::vec3(0.0f, 0.0f, 0.0f);
         }
     }();
 
-    const bool is_local = (mode >= CameraMode::LOCAL_X);
+    const bool is_local = (mode >= CameraMode::CAMERA_MODE_LOCAL_X);
 
     return (is_local ? orientation * world_axis : world_axis) * distance;
 }
@@ -251,15 +251,15 @@ void update_locked_camera(Camera& camera, CameraMode mode, float distance, const
 {
     camera.target = target;
 
-    if (mode == CameraMode::AXIS_Z || mode == CameraMode::AXIS_NZ)
+    if (mode == CameraMode::CAMERA_MODE_AXIS_Z || mode == CameraMode::CAMERA_MODE_AXIS_NZ)
     {
         camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
     }
-    else if (mode == CameraMode::LOCAL_Z || mode == CameraMode::LOCAL_NZ)
+    else if (mode == CameraMode::CAMERA_MODE_LOCAL_Z || mode == CameraMode::CAMERA_MODE_LOCAL_NZ)
     {
         camera.up = orientation * glm::vec3(0.0f, 1.0f, 0.0f);
     }
-    else if (mode == CameraMode::LOCAL_X || mode == CameraMode::LOCAL_NX || mode == CameraMode::LOCAL_Y || mode == CameraMode::LOCAL_NY)
+    else if (mode == CameraMode::CAMERA_MODE_LOCAL_X || mode == CameraMode::CAMERA_MODE_LOCAL_NX || mode == CameraMode::CAMERA_MODE_LOCAL_Y || mode == CameraMode::CAMERA_MODE_LOCAL_NY)
     {
         camera.up = orientation * glm::vec3(0.0f, 0.0f, 1.0f);
     }
@@ -300,6 +300,13 @@ void unlock_camera_to_free_orbit(Camera& camera, float fallback_distance)
     camera.position = camera.target + dir * dist;
 }
 
+void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
+{
+    const glm::vec3 offset = cam.position - cam.target;
+    cam.target             = pose_pos;
+    cam.position           = pose_pos + offset;
+}
+
 void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
 {
     auto* ctx = static_cast<MultiViewContext*>(glfwGetWindowUserPointer(window));
@@ -318,7 +325,7 @@ void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
         }
     }
 
-    if (active_idx >= 0 && ctx->camera_modes[active_idx] == CameraMode::FREE_ORBIT)
+    if (active_idx >= 0 && ctx->camera_modes[active_idx] == CameraMode::CAMERA_MODE_FREE_ORBIT)
     {
         Camera&    camera = ctx->cameras[active_idx];
         glm::dvec2 delta  = glm::dvec2(xpos, ypos) - camera.last_cursor;
@@ -375,7 +382,7 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     glfwGetCursorPos(window, &xpos, &ypos);
     int idx = ctx->camera_index_at(xpos, ypos);
 
-    if (idx < 0 || ctx->camera_modes[idx] != CameraMode::FREE_ORBIT)
+    if (idx < 0 || ctx->camera_modes[idx] != CameraMode::CAMERA_MODE_FREE_ORBIT)
     {
         return;
     }
@@ -414,7 +421,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     glfwGetCursorPos(window, &xpos, &ypos);
     int idx = ctx->camera_index_at(xpos, ypos);
 
-    if (idx < 0 || ctx->camera_modes[idx] != CameraMode::FREE_ORBIT)
+    if (idx < 0 || ctx->camera_modes[idx] != CameraMode::CAMERA_MODE_FREE_ORBIT)
     {
         return;
     }
@@ -423,7 +430,7 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 
     // For locked-axis cameras, scrolling adjusts the view axis length
     // (trajectory position -> camera distance) instead of free zoom.
-    if (ctx->camera_modes[idx] != CameraMode::FREE_ORBIT)
+    if (ctx->camera_modes[idx] != CameraMode::CAMERA_MODE_FREE_ORBIT)
     {
         ctx->view_axis_distance[idx] = std::max(0.1f, ctx->view_axis_distance[idx] - static_cast<float>(yoffset) * 0.5f * scroll_multiplier);
         return;

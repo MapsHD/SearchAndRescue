@@ -63,13 +63,6 @@ static GuiState     _gui_state     = {};
 static UserSettings _user_settings = {};
 static ProjectData  _project_data{};
 
-static inline void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos)
-{
-    const glm::vec3 offset = cam.position - cam.target;
-    cam.target             = pose_pos;
-    cam.position           = pose_pos + offset;
-}
-
 // GLFW drop callback : route each dropped file to the appropriate loader based on its extension
 static void drop_callback(GLFWwindow*, int count, const char** paths)
 {
@@ -588,7 +581,7 @@ int main()
 
         for (int i = 0; i < count; ++i)
         {
-            if (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT)
+            if (i >= 1 && ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT)
             {
                 update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
 
@@ -1178,7 +1171,7 @@ int main()
                 trajectory_program->PushUniform3F32("u_Color", _user_settings.trajectory.color);
                 _project_data.trajectory_positions_vao->Bind();
 
-                if (_user_settings.trajectory.display_mode == TrajectoryDisplayMode::Points)
+                if (_user_settings.trajectory.display_mode == TrajectoryDisplayMode::TRAJECTORY_DISPLAY_MODE_POINTS)
                 {
                     glPointSize(_user_settings.trajectory.point_size);
                     _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
@@ -1279,9 +1272,9 @@ int main()
 
                 glPointSize(_user_settings.point_cloud.point_size);
 
-                const bool use_color_map    = _user_settings.point_cloud.display_mode != PointCloudDisplayMode::Intensity;
-                const bool use_position_map = _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPosition ||
-                                              _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity;
+                const bool use_color_map    = _user_settings.point_cloud.display_mode != PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_INTENSITY;
+                const bool use_position_map = _user_settings.point_cloud.display_mode == PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION ||
+                                              _user_settings.point_cloud.display_mode == PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION_TIMES_INTENSITY;
 
                 Program* active_point_cloud_program = use_color_map ? point_cloud_color_map_program : point_cloud_program;
                 active_point_cloud_program->Bind();
@@ -1296,8 +1289,8 @@ int main()
                     active_point_cloud_program->PushUniform3F32("u_PositionMin", _project_data.cave_aabb.min);
                     const glm::vec3 position_extent = glm::max(_project_data.cave_aabb.max - _project_data.cave_aabb.min, glm::vec3(1e-6f));
                     active_point_cloud_program->PushUniform3F32("u_PositionInvRange", 1.0f / position_extent);
-                    active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapTimesIntensity ||
-                                                                                               _user_settings.point_cloud.display_mode == PointCloudDisplayMode::ColorMapPositionTimesIntensity
+                    active_point_cloud_program->PushUniform1F32("u_MultiplyIntensity", _user_settings.point_cloud.display_mode == PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_TIMES_INTENSITY ||
+                                                                                               _user_settings.point_cloud.display_mode == PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION_TIMES_INTENSITY
                                                                                            ? 1.0f
                                                                                            : 0.0f);
                 }

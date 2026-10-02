@@ -47,17 +47,17 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
             int count = static_cast<int>(ctx.active_count);
             if (ImGui::RadioButton("1 (single)", &count, 1))
             {
-                ctx.active_count = ViewportCount::ONE;
+                ctx.active_count = ViewportCount::VIEWPORT_COUNT_ONE;
             }
             ImGui::SameLine();
             if (ImGui::RadioButton("2 (L/R split)", &count, 2))
             {
-                ctx.active_count = ViewportCount::TWO;
+                ctx.active_count = ViewportCount::VIEWPORT_COUNT_TWO;
             }
             ImGui::SameLine();
             if (ImGui::RadioButton("4 (2x2 grid)", &count, 4))
             {
-                ctx.active_count = ViewportCount::FOUR;
+                ctx.active_count = ViewportCount::VIEWPORT_COUNT_FOUR;
             }
 
             static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
@@ -131,7 +131,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 {
                     CameraMode old_mode = ctx.camera_modes[i];
                     ctx.camera_modes[i] = static_cast<CameraMode>(mode);
-                    if (ctx.camera_modes[i] != CameraMode::FREE_ORBIT && old_mode != ctx.camera_modes[i])
+                    if (ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT && old_mode != ctx.camera_modes[i])
                     {
                         // Entering a non free look camera : calculate planes from the view distance
                         if (ctx.symmetric_planes[i])
@@ -145,7 +145,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                             ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
                         }
                     }
-                    else if (ctx.camera_modes[i] == CameraMode::FREE_ORBIT && old_mode != CameraMode::FREE_ORBIT)
+                    else if (ctx.camera_modes[i] == CameraMode::CAMERA_MODE_FREE_ORBIT && old_mode != CameraMode::CAMERA_MODE_FREE_ORBIT)
                     {
                         // Back to free look : reset planes for manual control
                         ctx.cameras[i].near_plane = 0.01f;
@@ -156,7 +156,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ImGui::SameLine();
                 ImGui::Text("camera");
 
-                const bool locked   = (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT);
+                const bool locked   = (i >= 1 && ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT);
                 const bool is_ortho = (ctx.cameras[i].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC);
 
                 if (locked)

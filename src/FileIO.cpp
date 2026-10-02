@@ -9,13 +9,13 @@
 #include <spdlog/spdlog.h>
 #include <sstream>
 
-enum class TrajectoryCsvLayout
+enum class TrajectoryCsvLayout : int
 {
-    Unknown,
-    Mat33_2Timestamps, // TS1, TS2, x, y, z, r00..r22  (14 columns)
-    Mat33_1Timestamp,  // TS1,      x, y, z, r00..r22  (13 columns)
-    Quat_2Timestamps,  // TS1, TS2, x, y, z, qx,qy,qz,qw (9 columns)
-    Quat_1Timestamp,   // TS1,      x, y, z, qx,qy,qz,qw (8 columns)
+    TRAJECTORY_CSV_LAYOUT_UNKNOWN            = 0,
+    TRAJECTORY_CSV_LAYOUT_MAT33_2_TIMESTAMPS = 1, // TS1, TS2, x, y, z, r00..r22  (14 columns)
+    TRAJECTORY_CSV_LAYOUT_MAT33_1_TIMESTAMP  = 2, // TS1,      x, y, z, r00..r22  (13 columns)
+    TRAJECTORY_CSV_LAYOUT_QUAT_2_TIMESTAMPS  = 3, // TS1, TS2, x, y, z, qx,qy,qz,qw (9 columns)
+    TRAJECTORY_CSV_LAYOUT_QUAT_1_TIMESTAMP   = 4  // TS1,      x, y, z, qx,qy,qz,qw (8 columns)
 };
 
 static size_t count_csv_columns(const std::string& line)
@@ -34,15 +34,15 @@ static TrajectoryCsvLayout classify_trajectory_csv_layout(const size_t column_co
     switch (column_count)
     {
     case 14:
-        return TrajectoryCsvLayout::Mat33_2Timestamps;
+        return TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_MAT33_2_TIMESTAMPS;
     case 13:
-        return TrajectoryCsvLayout::Mat33_1Timestamp;
+        return TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_MAT33_1_TIMESTAMP;
     case 9:
-        return TrajectoryCsvLayout::Quat_2Timestamps;
+        return TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_QUAT_2_TIMESTAMPS;
     case 8:
-        return TrajectoryCsvLayout::Quat_1Timestamp;
+        return TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_QUAT_1_TIMESTAMP;
     default:
-        return TrajectoryCsvLayout::Unknown;
+        return TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_UNKNOWN;
     }
 }
 
@@ -53,7 +53,7 @@ bool load_trajectory_csv(const std::filesystem::path& path, std::vector<Point>& 
 
     if (std::ifstream file = std::ifstream(path))
     {
-        TrajectoryCsvLayout layout = TrajectoryCsvLayout::Unknown;
+        TrajectoryCsvLayout layout = TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_UNKNOWN;
 
         size_t      line_index = 0;
         std::string line{};
@@ -70,19 +70,19 @@ bool load_trajectory_csv(const std::filesystem::path& path, std::vector<Point>& 
                 continue;
             }
 
-            if (layout == TrajectoryCsvLayout::Unknown)
+            if (layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_UNKNOWN)
             {
                 layout = classify_trajectory_csv_layout(count_csv_columns(line));
 
-                if (layout == TrajectoryCsvLayout::Unknown)
+                if (layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_UNKNOWN)
                 {
                     spdlog::error("Trajectory CSV {} has an unsupported column count ({}); expected 8, 9, 13 or 14 columns", path.string(), count_csv_columns(line));
                     return false;
                 }
             }
 
-            const bool is_quaternion      = (layout == TrajectoryCsvLayout::Quat_2Timestamps || layout == TrajectoryCsvLayout::Quat_1Timestamp);
-            const bool has_two_timestamps = (layout == TrajectoryCsvLayout::Mat33_2Timestamps || layout == TrajectoryCsvLayout::Quat_2Timestamps);
+            const bool is_quaternion      = (layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_QUAT_2_TIMESTAMPS || layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_QUAT_1_TIMESTAMP);
+            const bool has_two_timestamps = (layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_MAT33_2_TIMESTAMPS || layout == TrajectoryCsvLayout::TRAJECTORY_CSV_LAYOUT_QUAT_2_TIMESTAMPS);
 
             try
             {

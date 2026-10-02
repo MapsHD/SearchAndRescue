@@ -71,26 +71,26 @@ struct Camera
 
 enum class CameraMode : int
 {
-    FREE_ORBIT = 0,
-    AXIS_X,
-    AXIS_NX,
-    AXIS_Y,
-    AXIS_NY,
-    AXIS_Z,
-    AXIS_NZ,
-    LOCAL_X,
-    LOCAL_NX,
-    LOCAL_Y,
-    LOCAL_NY,
-    LOCAL_Z,
-    LOCAL_NZ,
+    CAMERA_MODE_FREE_ORBIT = 0,
+    CAMERA_MODE_AXIS_X     = 1,
+    CAMERA_MODE_AXIS_NX    = 2,
+    CAMERA_MODE_AXIS_Y     = 3,
+    CAMERA_MODE_AXIS_NY    = 4,
+    CAMERA_MODE_AXIS_Z     = 5,
+    CAMERA_MODE_AXIS_NZ    = 6,
+    CAMERA_MODE_LOCAL_X    = 7,
+    CAMERA_MODE_LOCAL_NX   = 8,
+    CAMERA_MODE_LOCAL_Y    = 9,
+    CAMERA_MODE_LOCAL_NY   = 10,
+    CAMERA_MODE_LOCAL_Z    = 11,
+    CAMERA_MODE_LOCAL_NZ   = 12
 };
 
 enum class ViewportCount : int
 {
-    ONE  = 1,
-    TWO  = 2,
-    FOUR = 4
+    VIEWPORT_COUNT_ONE  = 1,
+    VIEWPORT_COUNT_TWO  = 2,
+    VIEWPORT_COUNT_FOUR = 4
 };
 
 struct Viewport
@@ -106,10 +106,10 @@ struct MultiViewContext
     Camera cameras[MAX_CAMERAS]{};
 
     CameraMode camera_modes[MAX_CAMERAS]{
-        CameraMode::FREE_ORBIT,
-        CameraMode::FREE_ORBIT,
-        CameraMode::FREE_ORBIT,
-        CameraMode::FREE_ORBIT};
+        CameraMode::CAMERA_MODE_FREE_ORBIT,
+        CameraMode::CAMERA_MODE_FREE_ORBIT,
+        CameraMode::CAMERA_MODE_FREE_ORBIT,
+        CameraMode::CAMERA_MODE_FREE_ORBIT};
 
     float view_axis_distance[MAX_CAMERAS]{
         5.0f,
@@ -134,7 +134,7 @@ struct MultiViewContext
         1.25f,
         1.25f};
 
-    ViewportCount active_count{ViewportCount::ONE};
+    ViewportCount active_count{ViewportCount::VIEWPORT_COUNT_ONE};
 
     // Level of detail : fixed LOD index vs automatic LOD from distance (per viewport / camera)
 
@@ -189,6 +189,8 @@ bool any_projection_differs(const MultiViewContext& ctx, int active_count);
 
 void update_locked_camera(Camera& camera, CameraMode mode, float distance, const glm::vec3& target, const glm::mat3& orientation);
 void unlock_camera_to_free_orbit(Camera& camera, float fallback_distance = 5.0f);
+
+void snap_camera_target_to_trajectory(Camera& cam, const glm::vec3& pose_pos);
 
 struct GLFWwindow;
 

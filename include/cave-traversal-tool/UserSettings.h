@@ -7,26 +7,26 @@
 
 enum class PointCloudDisplayMode : int32_t
 {
-    Intensity                      = 0,
-    ColorMap                       = 1,
-    ColorMapTimesIntensity         = 2,
-    ColorMapPosition               = 3,
-    ColorMapPositionTimesIntensity = 4
+    POINT_CLOUD_DISPLAY_MODE_INTENSITY                          = 0,
+    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP                          = 1,
+    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_TIMES_INTENSITY          = 2,
+    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION                 = 3,
+    POINT_CLOUD_DISPLAY_MODE_COLOR_MAP_POSITION_TIMES_INTENSITY = 4
 };
 
 enum class ColorMapType : int32_t
 {
-    Turbo   = 0,
-    Viridis = 1,
-    Plasma  = 2,
-    Magma   = 3,
-    Inferno = 4
+    COLOR_MAP_TYPE_TURBO   = 0,
+    COLOR_MAP_TYPE_VIRIDIS = 1,
+    COLOR_MAP_TYPE_PLASMA  = 2,
+    COLOR_MAP_TYPE_MAGMA   = 3,
+    COLOR_MAP_TYPE_INFERNO = 4
 };
 
 enum class TrajectoryDisplayMode : int32_t
 {
-    LineStrip = 0,
-    Points    = 1
+    TRAJECTORY_DISPLAY_MODE_LINE_STRIP = 0,
+    TRAJECTORY_DISPLAY_MODE_POINTS     = 1
 };
 
 struct UserSettings
@@ -68,7 +68,7 @@ struct UserSettings
         float     point_size  = 2.0f;
         glm::vec3 color       = {1.0f, 1.0f, 1.0f};
 
-        TrajectoryDisplayMode display_mode = TrajectoryDisplayMode::LineStrip;
+        TrajectoryDisplayMode display_mode = TrajectoryDisplayMode::TRAJECTORY_DISPLAY_MODE_LINE_STRIP;
 
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
@@ -105,9 +105,9 @@ struct UserSettings
         bool draw_enable_pc_in_obb           = true;
         bool draw_enable_pc_in_obb_proximity = true;
 
-        PointCloudDisplayMode display_mode = PointCloudDisplayMode::ColorMap;
+        PointCloudDisplayMode display_mode = PointCloudDisplayMode::POINT_CLOUD_DISPLAY_MODE_COLOR_MAP;
 
-        ColorMapType colormap = ColorMapType::Turbo;
+        ColorMapType colormap = ColorMapType::COLOR_MAP_TYPE_TURBO;
 
         // helper for JSON loading; never used directly
         int32_t display_mode_value = 0;
