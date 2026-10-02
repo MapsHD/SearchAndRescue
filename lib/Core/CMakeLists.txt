@@ -1,0 +1,78 @@
+cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
+
+add_library(Core STATIC)
+
+target_sources(Core
+    PRIVATE
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Buffer.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Camera.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Debug.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/ErrorCallbacks.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/FileIO.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/PFDWrapper.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Processing.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Program.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Project.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/ProjectGui.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/UserSettings.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/VertexArray.cpp
+    PRIVATE
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/OpenGL/Buffer.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/OpenGL/Program.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/OpenGL/VertexArray.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Camera.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Debug.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Enums.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/ErrorCallbacks.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/FileIO.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/PFDWrapper.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/PointCloud.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Processing.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Project.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/ProjectGui.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Shaders.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/Structures.h
+        ${REPOSITORY_DIRECTORY}/lib/Core/include/Core/UserSettings.h
+)
+
+target_include_directories(Core
+    PUBLIC
+        ${REPOSITORY_DIRECTORY}/lib/Core/include
+    PUBLIC
+        ${EXTERNAL_DIRECTORY}/glm
+        ${EXTERNAL_DIRECTORY}/json/include
+        ${EXTERNAL_DIRECTORY}/glfw/include
+        ${EXTERNAL_DIRECTORY}/glad/include
+        ${EXTERNAL_DIRECTORY}/spdlog/include
+        ${EXTERNAL_DIRECTORY}/imgui
+        ${EXTERNAL_DIRECTORY}/imgui/backends
+        ${EXTERNAL_DIRECTORY}/ImGuizmo/src
+        ${EXTERNAL_DIRECTORY}/portable-file-dialogs
+        ${EXTERNAL_DIRECTORY}/happly
+        ${EXTERNAL_DIRECTORY}/LASzip/include/laszip
+        ${EXTERNAL_DIRECTORY}/LASzip/dll
+)
+
+target_link_libraries(Core
+    PUBLIC
+        glfw
+        glad
+        imgui
+        implot
+        imguizmo
+)
+
+if(WIN32)
+    target_link_libraries(Core
+        PUBLIC
+            laszip3
+            laszip_api3
+    )
+else()
+    target_link_libraries(Core
+        PUBLIC
+            laszip
+            laszip_api
+    )
+endif()
