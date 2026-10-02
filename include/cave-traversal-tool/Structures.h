@@ -4,8 +4,6 @@
 
 #include <glm/glm.hpp>
 
-#include <unordered_map>
-
 struct AABB
 {
     glm::vec3 min = {};
@@ -44,10 +42,4 @@ struct PointIntensity
 {
     glm::vec3 position  = {};
     float     intensity = {};
-};
-
-struct NormalPoint
-{
-    glm::vec3 position = {};
-    glm::vec3 normal   = {};
 };

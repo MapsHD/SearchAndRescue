@@ -9,24 +9,6 @@
 #include <spdlog/spdlog.h>
 #include <sstream>
 
-bool load_text_file(std::vector<char>& output, const std::filesystem::path& path)
-{
-    if (std::ifstream file = std::ifstream(path, std::ios::binary))
-    {
-        file.seekg(0, std::ios::end);
-        const size_t size = static_cast<size_t>(file.tellg());
-        file.seekg(0, std::ios::beg);
-
-        output.resize(size + 1UL);
-        file.read(output.data(), size);
-        output[size] = 0x00;
-
-        return true;
-    }
-
-    return false;
-}
-
 enum class TrajectoryCsvLayout
 {
     Unknown,

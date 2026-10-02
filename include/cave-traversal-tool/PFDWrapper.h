@@ -1,4 +1,5 @@
 #pragma once
+
 #include <string>
 
 // Returns false when the dialog is cancelled.

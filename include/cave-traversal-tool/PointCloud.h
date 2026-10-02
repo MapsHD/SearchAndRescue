@@ -5,6 +5,8 @@
 #include "OpenGL/Buffer.h"
 #include "OpenGL/VertexArray.h"
 
+#include <unordered_map>
+
 struct PointCloudLOD
 {
     std::vector<PointIntensity> points;

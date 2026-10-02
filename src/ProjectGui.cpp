@@ -93,7 +93,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 }
 
                 // Per-camera FOV (all viewports) : perspective projection only
-                ImGui::BeginDisabled(ctx.cameras[i].projection_type != ProjectionType::PERSPECTIVE);
+                ImGui::BeginDisabled(ctx.cameras[i].projection_type != ProjectionType::PROJECTION_TYPE_PERSPECTIVE);
                 if (ImGui::DragFloat(("fov_y##" + std::to_string(i)).c_str(), &ctx.cameras[i].fov_y, 0.5f, 1.0f, 170.0f, "%.1f deg"))
                 {
                     ctx.cameras[i].fov_y = std::clamp(ctx.cameras[i].fov_y, 1.0f, 170.0f);
@@ -157,7 +157,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ImGui::Text("camera");
 
                 const bool locked   = (i >= 1 && ctx.camera_modes[i] != CameraMode::FREE_ORBIT);
-                const bool is_ortho = (ctx.cameras[i].projection_type == ProjectionType::ORTHOGRAPHIC);
+                const bool is_ortho = (ctx.cameras[i].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC);
 
                 if (locked)
                 {

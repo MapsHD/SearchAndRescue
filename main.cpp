@@ -1,17 +1,4 @@
-﻿#include <algorithm>
-#include <array>
-#include <cctype>
-#include <chrono>
-#include <cmath>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <random>
-#include <ranges>
-#include <sstream>
-#include <vector>
-
-// clang-format off
+﻿// clang-format off
 #include <spdlog/spdlog.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -542,7 +529,7 @@ int main()
             glm::mat4 gizmo_view = ctx.cameras[0].get_view();
 
             ImGuizmo::BeginFrame();
-            ImGuizmo::SetOrthographic(ctx.cameras[0].projection_type == ProjectionType::ORTHOGRAPHIC);
+            ImGuizmo::SetOrthographic(ctx.cameras[0].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC);
             ImGuizmo::SetDrawlist(ImGui::GetBackgroundDrawList());
             ImGuizmo::SetRect(rect_x, rect_y, rect_w, rect_h);
 
@@ -621,7 +608,7 @@ int main()
                 // along the view axis would not change the image. Use the view axis distance as a
                 // dolly instead : the orthographic box grows / shrinks with the distance, so the
                 // distance slider has the same visual effect as in the perspective case.
-                if (ctx.cameras[i].projection_type == ProjectionType::ORTHOGRAPHIC)
+                if (ctx.cameras[i].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
                 {
                     const float fov_half_tan         = std::tan(glm::radians(ctx.cameras[i].fov_y * 0.5f));
                     ctx.cameras[i].ortho_half_height = std::max(0.01f, ctx.view_axis_distance[i] * fov_half_tan);

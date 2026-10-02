@@ -47,13 +47,6 @@ inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_l
             {1, 1, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(PointIntensity), offsetof(PointIntensity, intensity)}};
 }
 
-template <>
-inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_layout<NormalPoint>()
-{
-    return {{0, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(NormalPoint), offsetof(NormalPoint, position)},
-            {1, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(NormalPoint), offsetof(NormalPoint, normal)}};
-}
-
 class VertexArray
 {
 private:

@@ -200,28 +200,6 @@ bool point_in_obb(const glm::vec3& p, const OBB& obb)
            (pw >= w_min && pw <= w_max);
 }
 
-std::vector<glm::ivec3> find_buckets_in_aabb(const PointCloudBucket& g_buckets, const AABB& aabb)
-{
-    std::vector<glm::ivec3> result;
-
-    for (const auto& [id, bucket] : g_buckets)
-    {
-        const glm::vec3& bmin = bucket.aabb.min;
-        const glm::vec3& bmax = bucket.aabb.max;
-
-        bool overlap = (bmin.x <= aabb.max.x && bmax.x >= aabb.min.x) &&
-                       (bmin.y <= aabb.max.y && bmax.y >= aabb.min.y) &&
-                       (bmin.z <= aabb.max.z && bmax.z >= aabb.min.z);
-
-        if (overlap)
-        {
-            result.push_back(id);
-        }
-    }
-
-    return result;
-}
-
 std::pair<std::vector<glm::ivec3>, std::vector<glm::ivec3>> find_buckets_in_obb(const PointCloudBucket& g_buckets, const OBB& obb, const float M)
 {
     std::vector<glm::ivec3> intersecting;
@@ -407,22 +385,4 @@ bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<g
     }
 
     return true;
-}
-
-void free_point_cloud_record(PointCloudRecord* record)
-{
-    if (!record)
-    {
-        return;
-    }
-
-    PointCloudLOD* current = record->lods;
-    while (current)
-    {
-        PointCloudLOD* next = current->next;
-        delete current;
-        current = next;
-    }
-
-    record->lods = nullptr;
 }

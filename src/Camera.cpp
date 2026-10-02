@@ -22,7 +22,7 @@ std::array<float, 2> Camera::ortho_extents(float viewport_width, float viewport_
 
 glm::mat4 Camera::get_projection(float viewport_width, float viewport_height) const
 {
-    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    if (projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
     {
         const auto [half_w, half_h] = ortho_extents(viewport_width, viewport_height);
         return glm::ortho(-half_w, half_w, -half_h, half_h, near_plane, far_plane);
@@ -35,7 +35,7 @@ glm::mat4 Camera::get_projection(float viewport_width, float viewport_height) co
 
 float Camera::world_units_per_pixel(float depth) const
 {
-    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    if (projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
     {
         const float half_h = std::max(1e-4f, ortho_half_height / std::max(1e-4f, ortho_zoom));
         return (2.0f * half_h) / std::max(1.0f, viewport_h);
@@ -51,7 +51,7 @@ void Camera::screen_ray(float ndc_x, float ndc_y, float viewport_width, float vi
     const glm::mat4 proj = get_projection(viewport_width, viewport_height);
     const glm::mat4 view = get_view();
 
-    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    if (projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
     {
         // Parallel projection : every pixel shares the camera forward direction.
         // The origin slides across the orthographic box at the near plane distance.
@@ -143,7 +143,7 @@ void Camera::zoom(double scroll)
     glm::vec3 forward     = glm::normalize(target - position);
     float     zoom_amount = static_cast<float>(scroll) * 0.5f;
 
-    if (projection_type == ProjectionType::ORTHOGRAPHIC)
+    if (projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
     {
         // Orthographic : there is no perspective foreshortening, so dolly is faked by
         // zooming the projection box. scroll > 0 (wheel up) magnifies, scroll < 0 zooms out.
