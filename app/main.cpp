@@ -30,29 +30,33 @@
 #include <Core/Structures.h>
 #include <Core/UserSettings.h>
 
-#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MAJOR
-    #define CAVE_TRAVERSAL_TOOL_VERSION_MAJOR 0
-#endif
-#ifndef CAVE_TRAVERSAL_TOOL_VERSION_MINOR
-    #define CAVE_TRAVERSAL_TOOL_VERSION_MINOR 0
-#endif
-#ifndef CAVE_TRAVERSAL_TOOL_VERSION_PATCH
-    #define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
-#endif
-
-static constexpr uint32_t OPENGL_CONTEXT_MAJOR = 4;
-static constexpr uint32_t OPENGL_CONTEXT_MINOR = 6;
-
-static constexpr uint32_t WINDOW_DEFAULT_WIDTH  = 1600;
-static constexpr uint32_t WINDOW_DEFAULT_HEIGHT = 900;
-
-static constexpr const char* WINDOW_TITLE = "HDMapping-SearchAndRescue - version : ";
-
-// Stringify version defines into a single "X.Y.Z" string
 #define CONCATENATE_STRING_2(x) #x
 #define CONCATENATE_STRING(x) CONCATENATE_STRING_2(x)
 
-static const std::string WINDOW_VERSION_STRING = CONCATENATE_STRING(CAVE_TRAVERSAL_TOOL_VERSION_MAJOR) "." CONCATENATE_STRING(CAVE_TRAVERSAL_TOOL_VERSION_MINOR) "." CONCATENATE_STRING(CAVE_TRAVERSAL_TOOL_VERSION_PATCH);
+#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR
+    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR 0
+#endif
+
+#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR
+    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR 0
+#endif
+
+#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH
+    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH 0
+#endif
+
+#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
+static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
+static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 1;
+#else
+static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
+static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 6;
+#endif
+
+static constexpr uint32_t DEFAULT_WINDOW_WIDTH  = 1600;
+static constexpr uint32_t DEFAULT_WINDOW_HEIGHT = 900;
+
+static constexpr const char* WINDOW_TITLE = "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH);
 
 struct GuiState
 {
@@ -134,15 +138,15 @@ int main()
         return EXIT_FAILURE;
     }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, OPENGL_CONTEXT_MAJOR);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, OPENGL_CONTEXT_MINOR);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT, (std::string(WINDOW_TITLE) + WINDOW_VERSION_STRING).c_str(), nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE, nullptr, nullptr);
 
     glfwSetCursorPosCallback(window, cursor_position_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
@@ -1247,7 +1251,7 @@ int main()
                 stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
 
                 _project_data.stretcher_vao->Bind();
-                _project_data.stretcher_vao->DrawElements(GL_TRIANGLES, _project_data.stretcher_indices.size(), 1, 0);
+                _project_data.stretcher_vao->DrawElements(GL_TRIANGLES, _project_data.stretcher_indices.size());
             }
 
             //  STRETCHER BBOX
