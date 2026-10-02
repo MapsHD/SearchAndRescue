@@ -40,6 +40,12 @@
     #define CAVE_TRAVERSAL_TOOL_VERSION_PATCH 0
 #endif
 
+static constexpr uint32_t OPENGL_CONTEXT_MAJOR = 4;
+static constexpr uint32_t OPENGL_CONTEXT_MINOR = 6;
+
+static constexpr uint32_t WINDOW_DEFAULT_WIDTH  = 1600;
+static constexpr uint32_t WINDOW_DEFAULT_HEIGHT = 900;
+
 static constexpr const char* WINDOW_TITLE = "HDMapping-SearchAndRescue - version : ";
 
 // Stringify version defines into a single "X.Y.Z" string
@@ -121,17 +127,22 @@ int main()
         {{0.0f, 0.0f, 1.0f}}};
 
     glfwSetErrorCallback(ErrorCallback::GLFW);
-    glfwInit();
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    if (!glfwInit())
+    {
+        spdlog::critical("Failed to initialize GLFW!");
+        return EXIT_FAILURE;
+    }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, OPENGL_CONTEXT_MAJOR);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, OPENGL_CONTEXT_MINOR);
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 600, (std::string(WINDOW_TITLE) + WINDOW_VERSION_STRING).c_str(), nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT, (std::string(WINDOW_TITLE) + WINDOW_VERSION_STRING).c_str(), nullptr, nullptr);
 
     glfwSetCursorPosCallback(window, cursor_position_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);

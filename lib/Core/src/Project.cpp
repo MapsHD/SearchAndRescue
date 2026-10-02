@@ -15,7 +15,6 @@
 #include <Core/Processing.h>
 #include <Core/Project.h>
 
-
 // Free all OpenGL resources owned by the project data
 void free_project_data(ProjectData& project_data)
 {
