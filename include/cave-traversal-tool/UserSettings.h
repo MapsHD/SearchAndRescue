@@ -41,10 +41,12 @@ struct UserSettings
 
     struct
     {
-        bool      draw_enable = true;
-        float     width       = 1.0f;
-        float     point_size  = 2.0f;
-        glm::vec3 color       = {1.0f, 1.0f, 1.0f};
+        bool      draw_enable             = true;
+        bool      draw_orientations       = false;
+        float     orientation_axis_length = 0.05f;
+        float     width                   = 1.0f;
+        float     point_size              = 2.0f;
+        glm::vec3 color                   = {1.0f, 1.0f, 1.0f};
 
         TrajectoryDisplayMode display_mode = TrajectoryDisplayMode::TRAJECTORY_DISPLAY_MODE_LINE_STRIP;
 

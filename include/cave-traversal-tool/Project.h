@@ -73,8 +73,9 @@ struct ProjectData
     VertexArray* stretcher_aabb_vao = nullptr;
 
     // GPU side data : trajectory
-    Buffer*      trajectory_positions_vbo = nullptr;
-    VertexArray* trajectory_positions_vao = nullptr;
+    Buffer*      trajectory_positions_vbo     = nullptr;
+    VertexArray* trajectory_positions_vao     = nullptr;
+    Buffer*      trajectory_orientations_ssbo = nullptr;
 
     // TODO (m.wlasiuk) : limit based on point cloud statistics (8 * max points in LOD_0 accross PC ... ???)
     // GPU side data : collision points between stretcher OBB and point cloud (positions only, color as uniform)

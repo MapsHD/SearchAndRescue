@@ -175,6 +175,8 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                 ImGui::DragFloat("Width", &user_settings.trajectory.width, 0.25f, 1.0f, 8.0f);
                 ImGui::DragFloat("Point size", &user_settings.trajectory.point_size, 0.25f, 1.0f, 16.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.trajectory.color));
+                ImGui::Checkbox("Draw orientation axes", &user_settings.trajectory.draw_orientations);
+                ImGui::DragFloat("Orientation axis length (m)", &user_settings.trajectory.orientation_axis_length, 0.01f, 0.001f, 100.0f, "%.3f");
             }
             // ImGui::EndDisabled();
             ImGui::TreePop();
@@ -284,6 +286,8 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
           {"color", Vec3ToJSON(user_settings.target.color)}}},
         {"trajectory",
          {{"draw_enable", user_settings.trajectory.draw_enable},
+          {"draw_orientations", user_settings.trajectory.draw_orientations},
+          {"orientation_axis_length", user_settings.trajectory.orientation_axis_length},
           {"width", user_settings.trajectory.width},
           {"point_size", user_settings.trajectory.point_size},
           {"display_mode", static_cast<int32_t>(user_settings.trajectory.display_mode)},
@@ -381,6 +385,15 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
           ReadSetting(*point_cloud, "colormap", loaded.point_cloud.colormap_value) &&
           ReadSetting(*collision, "radious", loaded.collision.radious) &&
           ReadSetting(*collision, "points_size", loaded.collision.points_size)))
+        return false;
+
+    // Optional for settings files saved before orientation axes were introduced.
+    if (trajectory->contains("draw_orientations") && !ReadSetting(*trajectory, "draw_orientations", loaded.trajectory.draw_orientations))
+        return false;
+    if (trajectory->contains("orientation_axis_length") &&
+        !ReadSetting(*trajectory, "orientation_axis_length", loaded.trajectory.orientation_axis_length))
+        return false;
+    if (!(loaded.trajectory.orientation_axis_length > 0.0f) || loaded.trajectory.orientation_axis_length > 100.0f)
         return false;
 
     Vec3FromJSON(opengl, "clear_color", loaded.opengl.clear_color);

@@ -174,6 +174,7 @@ int main()
     Program* point_cloud_program            = make_program(GetProgramShaderSources_PointCloud());
     Program* point_cloud_color_map_program  = make_program(GetProgramShaderSources_PointCloudColorMap());
     Program* trajectory_program             = make_program(GetProgramShaderSources_Trajectory());
+    Program* trajectory_axes_program        = make_program(GetProgramShaderSources_TrajectoryOrientations());
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
     Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
@@ -555,7 +556,9 @@ int main()
                 _project_data.trajectory_positions[_project_data.trajectory_index].position             = position;
                 _project_data.trajectory_orientations_mat33[_project_data.trajectory_index].orientation = rotation;
 
-                glNamedBufferSubData(_project_data.trajectory_positions_vbo->GetID(), sizeof(glm::vec3) * _project_data.trajectory_index, sizeof(glm::vec3), &_project_data.trajectory_positions[_project_data.trajectory_index].position);
+                _project_data.trajectory_positions_vbo->Upload(&position, sizeof(position), sizeof(Point) * _project_data.trajectory_index);
+                const glm::vec4 gpu_orientation[3] = {glm::vec4(rotation[0], 0.0f), glm::vec4(rotation[1], 0.0f), glm::vec4(rotation[2], 0.0f)};
+                _project_data.trajectory_orientations_ssbo->Upload(gpu_orientation, sizeof(gpu_orientation), sizeof(gpu_orientation) * _project_data.trajectory_index);
             }
         }
 
@@ -1182,6 +1185,15 @@ int main()
                     glLineWidth(_user_settings.trajectory.width);
                     _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
                     glLineWidth(1.0f);
+                }
+                if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_orientations_ssbo)
+                {
+                    trajectory_axes_program->Bind();
+                    trajectory_axes_program->PushUniform16F32("u_MVP", MVP);
+                    trajectory_axes_program->PushUniform1F32("u_AxisLength", _user_settings.trajectory.orientation_axis_length);
+                    _project_data.trajectory_orientations_ssbo->SetAsShaderResource(GL_SHADER_STORAGE_BUFFER, 0, _project_data.trajectory_orientations_ssbo->GetSize(), 0);
+                    _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
+                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
                 }
             }
 
