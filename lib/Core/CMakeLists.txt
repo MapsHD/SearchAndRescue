@@ -4,6 +4,17 @@ add_library(Core STATIC)
 
 target_sources(Core
     PRIVATE
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/BoundingBox.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/BoundingBoxStretcher.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/CameraTarget.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/ColoredLine.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/Origin.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/PointCloud.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/PointCloudColorMap.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/Stretcher.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/Trajectory.cpp
+        ${REPOSITORY_DIRECTORY}/lib/Core/src/Shaders/TrajectoryOrientations.cpp
+        # # #
         ${REPOSITORY_DIRECTORY}/lib/Core/src/Buffer.cpp
         ${REPOSITORY_DIRECTORY}/lib/Core/src/Camera.cpp
         ${REPOSITORY_DIRECTORY}/lib/Core/src/Debug.cpp
