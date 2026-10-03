@@ -88,19 +88,6 @@ void Camera::screen_ray(float ndc_x, float ndc_y, float viewport_width, float vi
     out_direction = glm::normalize(glm::vec3(glm::inverse(view) * ray_eye));
 }
 
-bool any_projection_differs(const MultiViewContext& ctx, int active_count)
-{
-    for (int i = 1; i < active_count && i < MultiViewContext::MAX_CAMERAS; ++i)
-    {
-        if (ctx.cameras[i].projection_type != ctx.cameras[0].projection_type)
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 void Camera::rotate(double dx, double dy)
 {
     glm::vec3   offset  = position - target;

@@ -154,10 +154,6 @@ struct MultiViewContext
 
 glm::vec3 axis_camera_offset(CameraMode mode, float distance, const glm::mat3& orientation);
 
-// Hint whether the projection differs between viewports of a locked view :
-// when true the render pass must be repeated per viewport instead of once per camera
-bool any_projection_differs(const MultiViewContext& ctx, int active_count);
-
 void update_locked_camera(Camera& camera, CameraMode mode, float distance, const glm::vec3& target, const glm::mat3& orientation);
 void unlock_camera_to_free_orbit(Camera& camera, float fallback_distance = 5.0f);
 
