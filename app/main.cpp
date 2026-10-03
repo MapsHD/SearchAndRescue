@@ -399,7 +399,7 @@ int main()
                             ImGui::TextUnformatted(description);
                         };
 
-                        ImGui::TextUnformatted("Movement");
+                        ImGui::TextUnformatted("Movement [Windows only]");
                         if (ImGui::BeginTable("##shortcuts_movement", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                         {
                             ImGui::TableSetupColumn("ID");
@@ -420,7 +420,7 @@ int main()
 
                         ImGui::Spacing();
 
-                        ImGui::TextUnformatted("Processing");
+                        ImGui::TextUnformatted("Processing [Windows only]");
                         if (ImGui::BeginTable("##shortcuts_processing", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                         {
                             ImGui::TableSetupColumn("ID");
