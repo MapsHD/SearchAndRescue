@@ -411,7 +411,8 @@ int main()
                             shortcut_row("7", "Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
                             shortcut_row("8", "Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
                             shortcut_row("9", "Alt + LMB", "Pick trajectory point : sets the current trajectory index");
-                            shortcut_row("10", "Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
+                            shortcut_row("10", "Alt + RMB", "Snap camera target to trajectory point (leaves stretcher)");
+                            shortcut_row("11", "Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
 
                             ImGui::EndTable();
                         }
@@ -934,7 +935,15 @@ int main()
                         if (found)
                         {
                             spdlog::info("Trajectory pick in viewport {} : index = [{}] (distance to ray {:.3f} m)", pick_idx, best_index, best_dist);
-                            _project_data.trajectory_index = best_index;
+
+                            if (new_right_click)
+                            {
+                                snap_camera_target_to_trajectory(pick_cam, _project_data.trajectory_positions[best_index].position);
+                            }
+                            else
+                            {
+                                _project_data.trajectory_index = best_index;
+                            }
                         }
                         else
                         {
