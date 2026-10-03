@@ -1133,15 +1133,19 @@ int main()
                     // depth already exceeds the current best_t.
                     const float MEAS_PICK_RADIUS = 0.05f;
 
-                    // Build a sorted list of (camera_dist², bucket ptr) so we traverse
+                    // Build a sorted list of (depth_along_ray, bucket ptr) so we traverse
                     // nearest buckets first.
+                    // Using depth along ray_dir from ray_origin (not Euclidean distance from
+                    // camera_pos) is correct for both perspective and orthographic projections:
+                    // in ortho mode screen_ray() shifts ray_origin laterally, so camera_pos !=
+                    // ray_origin and a Euclidean sort gives the wrong bucket ordering.
                     std::vector<std::pair<float, const PointCloudRecord*>> sorted_buckets;
                     sorted_buckets.reserve(_project_data.buckets.size());
                     for (auto& [ID, bucket] : _project_data.buckets)
                     {
-                        const glm::vec3 center      = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
-                        const float     cam_dist_sq = glm::dot(center - camera_pos, center - camera_pos);
-                        sorted_buckets.emplace_back(cam_dist_sq, &bucket);
+                        const glm::vec3 center    = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
+                        const float     ray_depth = glm::dot(center - ray_origin, ray_dir);
+                        sorted_buckets.emplace_back(ray_depth, &bucket);
                     }
                     std::sort(sorted_buckets.begin(), sorted_buckets.end(),
                               [](const auto& a, const auto& b)
@@ -1151,12 +1155,12 @@ int main()
                     float     best_t      = std::numeric_limits<float>::max();
                     glm::vec3 best_point{};
 
-                    for (auto& [cam_dist_sq, bucket] : sorted_buckets)
+                    for (auto& [bucket_depth, bucket] : sorted_buckets)
                     {
-                        // Early-exit: if the bucket center is already farther than best_t
-                        // along the ray, no point inside it can beat current best.
-                        const float bucket_t = std::sqrt(cam_dist_sq);
-                        if (point_found && bucket_t > best_t + MEAS_PICK_RADIUS)
+                        // Early-exit: if the bucket center's depth along the ray already
+                        // exceeds the current best pick depth (plus the pick radius as slack),
+                        // no point inside it can possibly beat the current best.
+                        if (point_found && bucket_depth > best_t + MEAS_PICK_RADIUS)
                         {
                             break;
                         }
