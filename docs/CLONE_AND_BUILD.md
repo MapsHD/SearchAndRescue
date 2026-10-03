@@ -16,7 +16,7 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j 8
 
 # Run :
-.\build\Release\cave-traversal-tool.exe
+.\build\app\Release\HDMapping-SearchAndRescue.exe
 ```
 
 ## Run prebuilt:
@@ -31,5 +31,5 @@ cd SearchAndRescue
 # Open *binary* in Windows explorer :
 explorer.exe .
 
-# Double click on cave-traversal-tool.exe
+# Double click on HDMapping-SearchAndRescue.exe
 ```
