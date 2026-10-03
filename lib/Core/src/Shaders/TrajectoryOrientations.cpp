@@ -54,6 +54,7 @@ void main()
 }
 )";
 
+#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
 ProgramShaderSources GetProgramShaderSources_TrajectoryOrientations()
 {
     return ProgramShaderSources{
@@ -64,3 +65,4 @@ ProgramShaderSources GetProgramShaderSources_TrajectoryOrientations()
         .fragment_source      = kTrajectoryOrientationsFrag,
         .fragment_source_size = (int32_t)strlen(kTrajectoryOrientationsFrag)};
 }
+#endif

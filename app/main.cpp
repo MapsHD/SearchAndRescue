@@ -180,12 +180,14 @@ int main()
     glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
-    Program* origin_program                 = make_program(GetProgramShaderSources_Origin());
-    Program* camera_target_program          = make_program(GetProgramShaderSources_CameraTarger());
-    Program* point_cloud_program            = make_program(GetProgramShaderSources_PointCloud());
-    Program* point_cloud_color_map_program  = make_program(GetProgramShaderSources_PointCloudColorMap());
-    Program* trajectory_program             = make_program(GetProgramShaderSources_Trajectory());
-    Program* trajectory_axes_program        = make_program(GetProgramShaderSources_TrajectoryOrientations());
+    Program* origin_program                = make_program(GetProgramShaderSources_Origin());
+    Program* camera_target_program         = make_program(GetProgramShaderSources_CameraTarger());
+    Program* point_cloud_program           = make_program(GetProgramShaderSources_PointCloud());
+    Program* point_cloud_color_map_program = make_program(GetProgramShaderSources_PointCloudColorMap());
+    Program* trajectory_program            = make_program(GetProgramShaderSources_Trajectory());
+#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
+    Program* trajectory_axes_program = make_program(GetProgramShaderSources_TrajectoryOrientations());
+#endif
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
     Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
@@ -1197,6 +1199,7 @@ int main()
                     _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
                     glLineWidth(1.0f);
                 }
+#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
                 if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_orientations_ssbo)
                 {
                     trajectory_axes_program->Bind();
@@ -1206,6 +1209,7 @@ int main()
                     _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
                     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
                 }
+#endif
             }
 
             // MEASUREMENT LINES : draw completed entries as 3-D lines in world space

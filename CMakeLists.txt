@@ -7,10 +7,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED   ON)
 set(CMAKE_CXX_EXTENSIONS          OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(APPLE) # APPLE
+if(APPLE)
     add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1=1)
 else()
     add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1=0)
+endif()
+
+if(TRUE) # APPLE
+    add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=1)
+else()
+    add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=0)
 endif()
 
 set(REPOSITORY_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})

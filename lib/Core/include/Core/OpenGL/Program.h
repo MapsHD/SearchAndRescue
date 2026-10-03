@@ -30,8 +30,6 @@ public:
     void Bind();
     void Unbind();
 
-    void PushUniformSamplerUnit(const uint32_t unit, const uint32_t texture);
-
     void PushUniformS32(const std::string& name, const int32_t value);
     void PushUniformU32(const std::string& name, const uint32_t value);
     void PushUniform1F32(const std::string& name, const float value);

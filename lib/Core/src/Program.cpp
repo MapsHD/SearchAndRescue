@@ -121,11 +121,6 @@ void Program::Unbind()
     glUseProgram(0);
 }
 
-void Program::PushUniformSamplerUnit(const uint32_t unit, const uint32_t texture)
-{
-    glBindTextureUnit(unit, texture);
-}
-
 void Program::PushUniformS32(const std::string& name, const int32_t value)
 {
     glProgramUniform1i(_impl->id, GetUniformLocation(name), value);
