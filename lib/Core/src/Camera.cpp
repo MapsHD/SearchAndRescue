@@ -378,7 +378,15 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 
     if (button == GLFW_MOUSE_BUTTON_LEFT)
     {
-        camera.rotating = true;
+        // Shift / Ctrl / Alt + left button is used for picking, do not start orbiting in those cases :
+        // the camera would move between the click and the pick and the picking ray would miss what was clicked
+        const bool pick_modifier = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                                   glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                                   glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+        if (!pick_modifier)
+        {
+            camera.rotating = true;
+        }
     }
 
     if (button == GLFW_MOUSE_BUTTON_RIGHT)

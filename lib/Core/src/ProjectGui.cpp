@@ -156,10 +156,14 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     {
                         ctx.cameras[i].projection_type = static_cast<ProjectionType>(projection);
 
-                        // On change just reset the planes to a sane range and let the
+                        // On change of a free orbit camera just reset the planes to a sane range and let the
                         // user adjust them with the sliders below (both projection types).
-                        ctx.cameras[i].near_plane = 0.01f;
-                        ctx.cameras[i].far_plane  = 1000.0f;
+                        // Locked-axis cameras keep their planes, they are user controlled.
+                        if (i == 0 || ctx.camera_modes[i] == CameraMode::CAMERA_MODE_FREE_ORBIT)
+                        {
+                            ctx.cameras[i].near_plane = 0.01f;
+                            ctx.cameras[i].far_plane  = 1000.0f;
+                        }
                     }
                     if (ImGui::IsItemHovered())
                     {
@@ -172,19 +176,12 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 {
                     CameraMode old_mode = ctx.camera_modes[i];
                     ctx.camera_modes[i] = static_cast<CameraMode>(mode);
-                    if (ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT && old_mode != ctx.camera_modes[i])
+                    if (ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT && old_mode == CameraMode::CAMERA_MODE_FREE_ORBIT)
                     {
-                        // Entering a non free look camera : calculate planes from the view distance
-                        if (ctx.symmetric_planes[i])
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                        }
-                        else
-                        {
-                            ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - 1.5f);
-                            ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + 1.5f;
-                        }
+                        // Entering a non free look camera : start with a slab around the stretcher pose
+                        // (the planes are depths from the camera). Switching between axis modes keeps the planes.
+                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
                     }
                     else if (ctx.camera_modes[i] == CameraMode::CAMERA_MODE_FREE_ORBIT && old_mode != CameraMode::CAMERA_MODE_FREE_ORBIT)
                     {
@@ -202,37 +199,72 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
 
                 if (locked)
                 {
-                    // Non free look camera : planes are calculated each frame from the view distance,
-                    // so they are shown read-only and only the distance / offset can be edited here.
+                    // Non free look camera : the camera sits on the view axis at axis_length from the stretcher
+                    // pose and looks at it. The near / far planes are depths measured from the camera.
                     const char* plane_mode_names[] = {"Symmetrical", "Asymmetrical"};
                     int         plane_mode         = ctx.symmetric_planes[i] ? 0 : 1;
                     if (ImGui::Combo(("plane_mode##" + std::to_string(i)).c_str(), &plane_mode, plane_mode_names, 2))
                     {
                         ctx.symmetric_planes[i] = (plane_mode == 0);
                     }
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("Symmetrical : near / far = axis length -+ plane offset\nAsymmetrical : near / far set independently of the axis length");
+                    }
 
-                    ImGui::DragFloat(("plane_distance##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f");
+                    ImGui::DragFloat(("axis_length##" + std::to_string(i)).c_str(), &ctx.view_axis_distance[i], 0.1f, 0.1f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("Distance of the camera from the stretcher pose along the view axis");
+                    }
+
+                    Camera& camera = ctx.cameras[i];
 
                     if (ctx.symmetric_planes[i])
                     {
-                        ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f");
+                        // Planes are derived every frame from the axis length and the offset, so they are read-only here
+                        ImGui::DragFloat(("plane_offset##" + std::to_string(i)).c_str(), &ctx.symmetric_plane_offset[i], 0.05f, 0.05f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::SetTooltip("Near / far planes are placed at axis length -+ this offset");
+                        }
 
                         if (ImGui::Button(("Reset offset (1.25m)##" + std::to_string(i)).c_str()))
                         {
                             ctx.symmetric_plane_offset[i] = 1.25f;
                         }
+
+                        ImGui::BeginDisabled(true);
+                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &camera.near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &camera.far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
+                        ImGui::EndDisabled();
+                    }
+                    else
+                    {
+                        // The planes keep a minimal gap so that near < far always holds
+                        constexpr float MIN_PLANE_GAP = 0.01f;
+
+                        ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &camera.near_plane, 0.05f, 0.01f, std::max(0.01f, camera.far_plane - MIN_PLANE_GAP), "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::SetTooltip("Near plane : depth from the camera, closer points are cut");
+                        }
+
+                        ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &camera.far_plane, 0.05f, camera.near_plane + MIN_PLANE_GAP, 1000.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+                        if (ImGui::IsItemHovered())
+                        {
+                            ImGui::SetTooltip("Far plane : depth from the camera, farther points are cut");
+                        }
                     }
 
-                    ImGui::BeginDisabled(true);
-                    ImGui::DragFloat(("near_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].near_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
-                    ImGui::DragFloat(("far_plane##" + std::to_string(i)).c_str(), &ctx.cameras[i].far_plane, 0.05f, 0.01f, 1000.0f, "%.3f");
                     if (is_ortho)
                     {
-                        // Orthographic : the view axis distance is used as a dolly, so the box
+                        // Orthographic : the axis length is used as a dolly, so the box
                         // half height is derived from it and shown read-only
-                        ImGui::DragFloat(("ortho_half_height##" + std::to_string(i)).c_str(), &ctx.cameras[i].ortho_half_height, 0.05f, 0.01f, 10000.0f, "%.3f");
+                        ImGui::BeginDisabled(true);
+                        ImGui::DragFloat(("ortho_half_height##" + std::to_string(i)).c_str(), &camera.ortho_half_height, 0.05f, 0.01f, 10000.0f, "%.3f");
+                        ImGui::EndDisabled();
                     }
-                    ImGui::EndDisabled();
                 }
                 else if (is_ortho)
                 {

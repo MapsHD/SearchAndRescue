@@ -82,16 +82,18 @@ struct MultiViewContext
         CameraMode::CAMERA_MODE_FREE_ORBIT,
         CameraMode::CAMERA_MODE_FREE_ORBIT};
 
+    // Locked-axis cameras only : axis length = distance of the camera from the stretcher pose along the view axis.
+    // The near / far planes are the regular Camera::near_plane / Camera::far_plane depths measured from the camera.
+
     float view_axis_distance[MAX_CAMERAS]{
         5.0f,
         5.0f,
         5.0f,
         5.0f};
 
-    // Per-viewport plane control mode (locked-axis cameras only)
-    // true  : symmetric  - one slider controls camera distance from the stretcher pose,
-    //         near/far planes are derived as distance -+ symmetric_plane_offset
-    // false : asymmetric - near/far planes controlled independently (as before)
+    // Per-viewport plane mode (locked-axis cameras only)
+    // true  : symmetric  - near / far planes are derived every frame as axis length -+ symmetric_plane_offset
+    // false : asymmetric - near / far planes are controlled independently of the axis length
 
     bool symmetric_planes[MAX_CAMERAS]{
         true,
