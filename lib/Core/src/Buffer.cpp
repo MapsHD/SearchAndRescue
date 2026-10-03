@@ -20,13 +20,32 @@ Buffer::Buffer(const uint32_t flags, const size_t size, const void* data)
     _impl->flags = flags;
     _impl->size  = size;
 
-    glCreateBuffers(1, &_impl->id);
-    glNamedBufferStorage(_impl->id, _impl->size, data, _impl->flags);
+    GLenum usage = GL_STATIC_DRAW;
+    if ((flags & GL_DYNAMIC_STORAGE_BIT) != 0 || flags == GL_DYNAMIC_DRAW)
+    {
+        usage = GL_DYNAMIC_DRAW;
+    }
+    else if (flags == GL_STREAM_DRAW)
+    {
+        usage = GL_STREAM_DRAW;
+    }
+    else if (flags == GL_STATIC_DRAW)
+    {
+        usage = GL_STATIC_DRAW;
+    }
+    else if (flags != 0 && flags != GL_NONE)
+    {
+        usage = flags;
+    }
+
+    glGenBuffers(1, &_impl->id);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, _impl->id);
+    glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(_impl->size), data, usage);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
 Buffer::~Buffer()
 {
-    glInvalidateBufferData(_impl->id);
     glDeleteBuffers(1, &_impl->id);
 
     delete _impl;
@@ -49,9 +68,9 @@ size_t Buffer::GetSize() const
 
 void Buffer::Upload(const void* data, const size_t size, const size_t offset) const
 {
-    if ((_impl->flags & GL_DYNAMIC_STORAGE_BIT) == 0)
+    if ((_impl->flags & GL_DYNAMIC_STORAGE_BIT) == 0 && _impl->flags != GL_DYNAMIC_DRAW && _impl->flags != GL_STREAM_DRAW)
     {
-        spdlog::critical("Buffer ID = {} was created without GL_DYNAMIC_STORAGE_BIT but Upload() was called - upload rejected!", _impl->id);
+        spdlog::critical("Buffer ID = {} was created without dynamic usage but Upload() was called - upload rejected!", _impl->id);
         return;
     }
 
@@ -61,7 +80,9 @@ void Buffer::Upload(const void* data, const size_t size, const size_t offset) co
         return;
     }
 
-    glNamedBufferSubData(_impl->id, offset, size, data);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, _impl->id);
+    glBufferSubData(GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size), data);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
 }
 
 void Buffer::SetAsShaderResource(const uint32_t resource_type, const uint32_t binding, const size_t size, const size_t offset) const

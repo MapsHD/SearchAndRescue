@@ -57,9 +57,8 @@ inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_l
             {3, 3, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(OrientationAxesVertex), offsetof(OrientationAxesVertex, axis_z)}};
 }
 
-// Associates a VBO with a set of attribute layouts and an explicit binding slot.
-// All attributes in layout share the same buffer binding slot; their individual
-// byte offsets are expressed as relativeoffset in glVertexArrayAttribFormat.
+// Associates a VBO with a set of attribute layouts.
+// All attributes in layout are sourced from this buffer.
 struct VertexBufferBinding
 {
     Buffer*                                  buffer           = nullptr;
@@ -78,7 +77,7 @@ private:
 
 public:
     // Constructs a VAO from one or more buffer bindings.
-    // Each VertexBufferBinding attaches a VBO to a specific binding slot with its attribute layout.
+    // Each VertexBufferBinding attaches a VBO with its attribute layout.
     // The optional index_buffer is used for indexed draw calls and is not owned by any binding.
     explicit VertexArray(const std::vector<VertexBufferBinding>& bindings, Buffer* index_buffer, const bool index_buffer_ownership);
 
