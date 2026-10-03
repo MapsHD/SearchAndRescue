@@ -5,6 +5,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <Core/PFDWrapper.h>
+
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <limits>
 
@@ -16,6 +20,43 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
     {
         if (ImGui::TreeNode("File input / output"))
         {
+            // ---- Project save / load (.p3) ----
+            ImGui::SeparatorText("Project file (.p3)");
+
+            if (ImGui::Button("Save project", ImVec2(200.0f, 0.0f)))
+            {
+                std::string selected;
+                if (PFDSaveFile("Save project", "project.p3", "Project files", "*.p3", selected))
+                {
+                    std::filesystem::path save_path(selected);
+                    if (save_path.extension() != ".p3")
+                        save_path += ".p3";
+                    if (!ProjectSaveJSON(save_path, project_data))
+                        spdlog::warn("Failed to save project to {}", save_path.string());
+                }
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Save the current trajectory / object / environment paths to a .p3 project file");
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Load project", ImVec2(200.0f, 0.0f)))
+            {
+                std::string selected;
+                if (PFDOpenFile("Load project", "Project files", "*.p3", selected))
+                {
+                    if (!ProjectLoadJSON(std::filesystem::path(selected), project_data, user_settings))
+                        spdlog::warn("Failed to load project from {}", selected);
+                }
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Load a .p3 project file (also supports drag-and-drop)");
+
+            ImGui::Spacing();
+
+            // ---- Individual file loaders ----
+            ImGui::SeparatorText("Individual files");
+
             if (ImGui::Button("Load trajectory", ImVec2(200.0f, 0.0f)))
             {
                 load_trajectory_dialog(project_data, user_settings);

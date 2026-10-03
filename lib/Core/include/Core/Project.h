@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -139,3 +140,12 @@ void load_environment_dialog(ProjectData& project_data, const UserSettings& user
 
 // Move trajectory index by +- given amount of meters along the trajectory (if possible)
 void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uint32_t& index, const float amount);
+
+// Save the three project file paths (trajectory / object / environment) to a JSON .p3 file.
+// Returns true on success.
+bool ProjectSaveJSON(const std::filesystem::path& path, const ProjectData& project_data);
+
+// Load project file paths from a JSON .p3 file and reload all three datasets.
+// Returns true when the file was parsed successfully (individual load failures are logged but do
+// not prevent the other files from being attempted).
+bool ProjectLoadJSON(const std::filesystem::path& path, ProjectData& project_data, const UserSettings& user_settings);

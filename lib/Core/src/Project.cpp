@@ -550,3 +550,106 @@ void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uin
 
     spdlog::debug("Moved trajectory index from [{}] to [{}] by requested {:.2f} m (actual {:.2f} m)", previous_index, index, amount, glm::length(trajectory[index].position - start_position));
 }
+
+// ---------------------------------------------------------------------------
+// Project save / load  (.p3 JSON format)
+// ---------------------------------------------------------------------------
+// The .p3 file records the three dataset paths so the user can reopen a
+// session without re-dragging every file individually.
+// ---------------------------------------------------------------------------
+
+#include <fstream>
+#include <nlohmann/json.hpp>
+
+bool ProjectSaveJSON(const std::filesystem::path& path, const ProjectData& project_data)
+{
+    const nlohmann::json doc = {
+        {"version", 1},
+        {"trajectory", project_data.trajectory_path},
+        {"object", project_data.object_path},
+        {"environment", project_data.environment_path},
+    };
+
+    std::ofstream file(path);
+    if (!file)
+    {
+        spdlog::error("ProjectSaveJSON : cannot open '{}' for writing", path.string());
+        return false;
+    }
+
+    file << doc.dump(4) << '\n';
+    file.close();
+
+    if (!file.good())
+    {
+        spdlog::error("ProjectSaveJSON : write error for '{}'", path.string());
+        return false;
+    }
+
+    spdlog::info("Project saved to '{}'", path.string());
+    return true;
+}
+
+bool ProjectLoadJSON(const std::filesystem::path& path, ProjectData& project_data, const UserSettings& user_settings)
+{
+    std::ifstream file(path);
+    if (!file)
+    {
+        spdlog::error("ProjectLoadJSON : cannot open '{}'", path.string());
+        return false;
+    }
+
+    const nlohmann::json doc = nlohmann::json::parse(file, nullptr, /*allow_exceptions=*/false);
+    if (doc.is_discarded())
+    {
+        spdlog::error("ProjectLoadJSON : JSON parse error in '{}'", path.string());
+        return false;
+    }
+
+    // Helper : read an optional string field
+    const auto ReadPath = [&doc](const char* key) -> std::string
+    {
+        const auto it = doc.find(key);
+        if (it != doc.end() && it->is_string())
+            return it->get<std::string>();
+        return {};
+    };
+
+    const std::string trajectory_path  = ReadPath("trajectory");
+    const std::string object_path      = ReadPath("object");
+    const std::string environment_path = ReadPath("environment");
+
+    bool any_loaded = false;
+
+    if (!trajectory_path.empty())
+    {
+        if (load_trajectory(project_data, trajectory_path, user_settings.io.trajectory_load_every_nth))
+            any_loaded = true;
+        else
+            spdlog::warn("ProjectLoadJSON : failed to load trajectory '{}'", trajectory_path);
+    }
+
+    if (!object_path.empty())
+    {
+        if (load_object(project_data, object_path))
+            any_loaded = true;
+        else
+            spdlog::warn("ProjectLoadJSON : failed to load object '{}'", object_path);
+    }
+
+    if (!environment_path.empty())
+    {
+        if (load_environment(project_data, environment_path, user_settings))
+            any_loaded = true;
+        else
+            spdlog::warn("ProjectLoadJSON : failed to load environment '{}'", environment_path);
+    }
+
+    spdlog::info("Project loaded from '{}' (trajectory={}, object={}, environment={})",
+                 path.string(),
+                 trajectory_path.empty() ? "(none)" : trajectory_path,
+                 object_path.empty() ? "(none)" : object_path,
+                 environment_path.empty() ? "(none)" : environment_path);
+
+    return true;
+}

@@ -88,7 +88,12 @@ static void drop_callback(GLFWwindow*, int count, const char** paths)
 
         bool loaded = false;
 
-        if (extension == ".csv")
+        if (extension == ".p3")
+        {
+            spdlog::info("Dropped file [{}] : loading project", paths[i]);
+            loaded = ProjectLoadJSON(path, _project_data, _user_settings);
+        }
+        else if (extension == ".csv")
         {
             spdlog::info("Dropped file [{}] : loading trajectory", paths[i]);
             loaded = load_trajectory(_project_data, path.string(), _user_settings.io.trajectory_load_every_nth);
@@ -105,10 +110,10 @@ static void drop_callback(GLFWwindow*, int count, const char** paths)
         }
         else
         {
-            spdlog::warn("Dropped file [{}] : unsupported extension [{}], supported : .las .laz .csv .ply", paths[i], extension);
+            spdlog::warn("Dropped file [{}] : unsupported extension [{}], supported : .p3 .las .laz .csv .ply", paths[i], extension);
         }
 
-        if (!loaded && (extension == ".csv" || extension == ".ply" || extension == ".las" || extension == ".laz"))
+        if (!loaded && (extension == ".p3" || extension == ".csv" || extension == ".ply" || extension == ".las" || extension == ".laz"))
         {
             spdlog::error("Failed to load dropped file : {}", paths[i]);
         }
