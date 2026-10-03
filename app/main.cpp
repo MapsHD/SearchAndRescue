@@ -333,12 +333,53 @@ int main()
                     ImGui::EndMenu();
                 }
 
-                // Right-aligned "Shortcuts" text with tooltip : table of all keyboard / mouse controls
+                // Right-aligned info tooltips: Authors | Shortcuts | Configuration
+                // Each label is separated by 20 px; the group sits 20 px from the right edge.
                 {
-                    const float authors_text_width  = ImGui::CalcTextSize("Authors").x;
+                    static constexpr float k_gap    = 20.0f;
+                    static constexpr float k_margin = 20.0f;
+
+                    const float authors_width       = ImGui::CalcTextSize("Authors").x;
                     const float shortcuts_width     = ImGui::CalcTextSize("Shortcuts").x;
                     const float configuration_width = ImGui::CalcTextSize("Configuration").x;
 
+                    const float total_width = authors_width + k_gap + shortcuts_width + k_gap + configuration_width + k_margin;
+                    ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - total_width);
+ 
+                    ImGui::Text("Authors");
+                    if (ImGui::BeginItemTooltip())
+                    {
+                        if (ImGui::BeginTable("##authors", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("ID");
+                            ImGui::TableSetupColumn("Name");
+                            ImGui::TableSetupColumn("E-mail");
+                            ImGui::TableSetupColumn("Role");
+                            ImGui::TableHeadersRow();
+
+                            auto author_row = [](const char* id, const char* name, const char* email, const char* role)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(id);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(name);
+                                ImGui::TableSetColumnIndex(2);
+                                ImGui::TextUnformatted(email);
+                                ImGui::TableSetColumnIndex(3);
+                                ImGui::TextUnformatted(role);
+                            };
+
+                            author_row("1", "Michal Wlasiuk", "michal.mwa87@gmail.com", "Project development");
+                            author_row("2", "Janusz Bedkowski", "januszbedkowski@gmail.com", "Project supervisor");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
+                    }
+
+                    ImGui::SameLine(0.0f, k_gap);
+ 
                     ImGui::Text("Shortcuts");
                     if (ImGui::BeginItemTooltip())
                     {
@@ -377,38 +418,8 @@ int main()
                         ImGui::EndTooltip();
                     }
 
-                    ImGui::Text("Authors");
-                    if (ImGui::BeginItemTooltip())
-                    {
-                        if (ImGui::BeginTable("##authors", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
-                        {
-                            ImGui::TableSetupColumn("ID");
-                            ImGui::TableSetupColumn("Name");
-                            ImGui::TableSetupColumn("E-mail");
-                            ImGui::TableSetupColumn("Role");
-                            ImGui::TableHeadersRow();
-
-                            auto author_row = [](const char* id, const char* name, const char* email, const char* role)
-                            {
-                                ImGui::TableNextRow();
-                                ImGui::TableSetColumnIndex(0);
-                                ImGui::TextUnformatted(id);
-                                ImGui::TableSetColumnIndex(1);
-                                ImGui::TextUnformatted(name);
-                                ImGui::TableSetColumnIndex(2);
-                                ImGui::TextUnformatted(email);
-                                ImGui::TableSetColumnIndex(3);
-                                ImGui::TextUnformatted(role);
-                            };
-
-                            author_row("1", "Michal Wlasiuk", "michal.mwa87@gmail.com", "Project development");
-                            author_row("2", "Janusz Bedkowski", "januszbedkowski@gmail.com", "Project supervisor");
-
-                            ImGui::EndTable();
-                        }
-                        ImGui::EndTooltip();
-                    }
-
+                    ImGui::SameLine(0.0f, k_gap);
+ 
                     ImGui::Text("Configuration");
                     if (ImGui::BeginItemTooltip())
                     {
