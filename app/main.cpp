@@ -1121,52 +1121,79 @@ int main()
                     glm::vec3 camera_pos     = pick_cam.position;
                     glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
 
-                    // Find the closest point cloud point to the ray, respecting near/far planes
+                    // Find the point cloud point closest to the camera whose perpendicular
+                    // distance to the ray is within the pick radius.
+                    // Buckets are visited front-to-back (sorted by AABB-center distance to
+                    // camera) so that we can skip a bucket as soon as its nearest possible
+                    // depth already exceeds the current best_t.
                     const float MEAS_PICK_RADIUS = 0.05f;
 
+                    // Build a sorted list of (camera_dist², bucket ptr) so we traverse
+                    // nearest buckets first.
+                    std::vector<std::pair<float, const PointCloudRecord*>> sorted_buckets;
+                    sorted_buckets.reserve(_project_data.buckets.size());
+                    for (auto& [ID, bucket] : _project_data.buckets)
+                    {
+                        const glm::vec3 center      = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
+                        const float     cam_dist_sq = glm::dot(center - camera_pos, center - camera_pos);
+                        sorted_buckets.emplace_back(cam_dist_sq, &bucket);
+                    }
+                    std::sort(sorted_buckets.begin(), sorted_buckets.end(),
+                              [](const auto& a, const auto& b)
+                              { return a.first < b.first; });
+
                     bool      point_found = false;
-                    float     best_d      = MEAS_PICK_RADIUS;
                     float     best_t      = std::numeric_limits<float>::max();
                     glm::vec3 best_point{};
 
-                    for (auto& [ID, bucket] : _project_data.buckets)
+                    for (auto& [cam_dist_sq, bucket] : sorted_buckets)
                     {
-                        for (PointCloudLOD* lod = bucket.lods; lod; lod = lod->next)
+                        // Early-exit: if the bucket center is already farther than best_t
+                        // along the ray, no point inside it can beat current best.
+                        const float bucket_t = std::sqrt(cam_dist_sq);
+                        if (point_found && bucket_t > best_t + MEAS_PICK_RADIUS)
+                        {
+                            break;
+                        }
+
+                        for (PointCloudLOD* lod = bucket->lods; lod; lod = lod->next)
                         {
                             for (const PointIntensity& p : lod->points)
                             {
                                 const glm::vec3 to_point = p.position - ray_origin;
 
-                                // t = projection onto the ray
+                                // t = depth along the ray (distance from camera projected onto ray)
                                 const float t = glm::dot(to_point, ray_dir);
-
-                                // Respect camera near/far: the point must be visible
-                                // (its depth along camera_forward must lie within [near_plane, far_plane])
-                                const float depth = glm::dot(p.position - camera_pos, camera_forward);
-                                if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
-                                {
-                                    continue;
-                                }
 
                                 if (t <= 0.0f)
                                 {
                                     continue;
                                 }
 
-                                const float d = glm::length(to_point - t * ray_dir);
-
-                                if (d > best_d)
+                                // Skip if this point is already farther than our current best
+                                if (point_found && t >= best_t)
                                 {
                                     continue;
                                 }
 
-                                if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
+                                // Respect camera near/far planes
+                                const float depth = glm::dot(p.position - camera_pos, camera_forward);
+                                if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
                                 {
-                                    point_found = true;
-                                    best_d      = d;
-                                    best_t      = t;
-                                    best_point  = p.position;
+                                    continue;
                                 }
+
+                                // Perpendicular distance from point to ray must be within pick radius
+                                const float d = glm::length(to_point - t * ray_dir);
+                                if (d > MEAS_PICK_RADIUS)
+                                {
+                                    continue;
+                                }
+
+                                // Among all points within the radius, prefer the closest to camera (smallest t)
+                                point_found = true;
+                                best_t      = t;
+                                best_point  = p.position;
                             }
                         }
                     }
