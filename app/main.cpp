@@ -196,18 +196,18 @@ int main()
     const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
     Buffer*      origin_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
-    VertexArray* origin_vao    = new VertexArray(origin_buffer, false, nullptr, false, layout_color_point);
+    VertexArray* origin_vao    = new VertexArray({{origin_buffer, false, layout_color_point, 0}}, nullptr, false);
 
     Buffer*      target_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
-    VertexArray* target_vao    = new VertexArray(target_buffer, false, nullptr, false, layout_point);
+    VertexArray* target_vao    = new VertexArray({{target_buffer, false, layout_point, 0}}, nullptr, false);
 
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
     _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
-    _project_data.collision_points_vao = new VertexArray(_project_data.collision_points_vbo, false, nullptr, false, layout_point);
+    _project_data.collision_points_vao = new VertexArray({{_project_data.collision_points_vbo, false, layout_point, 0}}, nullptr, false);
 
     // Measurement lines : pre-allocated GPU buffer, 2 coloured vertices per completed entry
     _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
-    _project_data.measurement_line_vao = new VertexArray(_project_data.measurement_line_vbo, false, nullptr, false, layout_colored);
+    _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored, 0}}, nullptr, false);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
