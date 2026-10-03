@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
 
-project(HDMapping-SearchAndRescue VERSION 1.0.5)
+project(HDMapping-SearchAndRescue VERSION 1.0.6)
 
 set(CMAKE_CXX_STANDARD            23)
 set(CMAKE_CXX_STANDARD_REQUIRED   ON)
