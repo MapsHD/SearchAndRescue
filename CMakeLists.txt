@@ -13,7 +13,7 @@ else()
     add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1=0)
 endif()
 
-if(TRUE) # APPLE
+if(APPLE)
     add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=1)
 else()
     add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=0)

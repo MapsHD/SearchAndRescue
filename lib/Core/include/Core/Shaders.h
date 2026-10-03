@@ -24,9 +24,7 @@ ProgramShaderSources GetProgramShaderSources_PointCloud();
 ProgramShaderSources GetProgramShaderSources_PointCloudColorMap();
 ProgramShaderSources GetProgramShaderSources_Stretcher();
 ProgramShaderSources GetProgramShaderSources_Trajectory();
-#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
 ProgramShaderSources GetProgramShaderSources_TrajectoryOrientations();
-#endif
 ProgramShaderSources GetProgramShaderSources_ColoredLine();
 
 // Helper : compile a vertex+fragment program, optionally with a geometry shader

@@ -39,9 +39,10 @@ void free_project_data(ProjectData& project_data)
 
     project_data.buckets.clear();
 
+    delete project_data.trajectory_axes_vao;
     delete project_data.trajectory_positions_vao;
     delete project_data.trajectory_positions_vbo;
-    delete project_data.trajectory_orientations_ssbo;
+    delete project_data.trajectory_orientations_vbo;
 
     delete project_data.stretcher_aabb_vao;
     delete project_data.stretcher_aabb_vbo;
@@ -66,6 +67,13 @@ bool rebuild_trajectory_mat33_opengl_data(ProjectData& project_data)
 
     project_data.trajectory_index = 0;
 
+    if (project_data.trajectory_axes_vao)
+    {
+        spdlog::debug("Deleting old trajectory axes VAO : {}", project_data.trajectory_axes_vao->GetID());
+        delete project_data.trajectory_axes_vao;
+        project_data.trajectory_axes_vao = nullptr;
+    }
+
     if (project_data.trajectory_positions_vao)
     {
         spdlog::debug("Deleting old trajectory positions VAO : {}", project_data.trajectory_positions_vao->GetID());
@@ -78,26 +86,66 @@ bool rebuild_trajectory_mat33_opengl_data(ProjectData& project_data)
         delete project_data.trajectory_positions_vbo;
     }
 
-    delete project_data.trajectory_orientations_ssbo;
-    project_data.trajectory_orientations_ssbo = nullptr;
+    if (project_data.trajectory_orientations_vbo)
+    {
+        spdlog::debug("Deleting old trajectory orientations VBO : {}", project_data.trajectory_orientations_vbo->GetID());
+        delete project_data.trajectory_orientations_vbo;
+        project_data.trajectory_orientations_vbo = nullptr;
+    }
 
+    // Positions VBO + VAO (used for the plain trajectory line/point draw pass)
     project_data.trajectory_positions_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(project_data.trajectory_positions), project_data.trajectory_positions.data());
     project_data.trajectory_positions_vao = new VertexArray(project_data.trajectory_positions_vbo, false, nullptr, false, layout_point);
 
-    // std430 mat3 columns have a 16-byte stride; upload padded columns for each pose.
-    struct alignas(16) GpuOrientation
+    // Orientation VBO: three tightly-packed vec3 columns per pose (AxisX, AxisY, AxisZ).
+    // Layout in memory per vertex: [X.x X.y X.z | Y.x Y.y Y.z | Z.x Z.y Z.z]
+    struct OrientationVertex
     {
-        glm::vec4 x, y, z;
+        glm::vec3 axis_x;
+        glm::vec3 axis_y;
+        glm::vec3 axis_z;
     };
-    std::vector<GpuOrientation> orientations;
+
+    std::vector<OrientationVertex> orientations;
     orientations.reserve(project_data.trajectory_orientations_mat33.size());
     for (const auto& pose : project_data.trajectory_orientations_mat33)
-        orientations.push_back({glm::vec4(pose.orientation[0], 0.0f),
-                                glm::vec4(pose.orientation[1], 0.0f),
-                                glm::vec4(pose.orientation[2], 0.0f)});
-    project_data.trajectory_orientations_ssbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(orientations), orientations.data());
+    {
+        orientations.push_back({
+            pose.orientation[0], // column 0 = X axis
+            pose.orientation[1], // column 1 = Y axis
+            pose.orientation[2], // column 2 = Z axis
+        });
+    }
+    project_data.trajectory_orientations_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(orientations), orientations.data());
 
-    spdlog::debug("Created trajectory VAO [{}], VBO [{}] and orientations SSBO [{}]", project_data.trajectory_positions_vao->GetID(), project_data.trajectory_positions_vbo->GetID(), project_data.trajectory_orientations_ssbo->GetID());
+    // Combined axes VAO: positions at binding 0 (location 0),
+    // orientation columns at binding 1 (locations 1, 2, 3).
+    const int32_t                          orient_stride = static_cast<int32_t>(sizeof(OrientationVertex));
+    const std::vector<VertexBufferBinding> axes_bindings = {
+        // Positions VBO -- binding slot 0, attribute location 0
+        {
+            project_data.trajectory_positions_vbo,
+            /* ownership */ false,
+            layout_point,
+            /* binding_index */ 0},
+        // Orientations VBO -- binding slot 1, attributes at locations 1, 2, 3
+        {
+            project_data.trajectory_orientations_vbo,
+            /* ownership */ false,
+            std::vector<VertexBufferAttributeLayout>{
+                {1, 3, /* GL_FLOAT */ 0x1406, 0, orient_stride, static_cast<int32_t>(offsetof(OrientationVertex, axis_x))},
+                {2, 3, /* GL_FLOAT */ 0x1406, 0, orient_stride, static_cast<int32_t>(offsetof(OrientationVertex, axis_y))},
+                {3, 3, /* GL_FLOAT */ 0x1406, 0, orient_stride, static_cast<int32_t>(offsetof(OrientationVertex, axis_z))},
+            },
+            /* binding_index */ 1},
+    };
+    project_data.trajectory_axes_vao = new VertexArray(axes_bindings, nullptr, false);
+
+    spdlog::debug("Created trajectory positions VAO [{}] VBO [{}], orientations VBO [{}], axes VAO [{}]",
+                  project_data.trajectory_positions_vao->GetID(),
+                  project_data.trajectory_positions_vbo->GetID(),
+                  project_data.trajectory_orientations_vbo->GetID(),
+                  project_data.trajectory_axes_vao->GetID());
 
     return true;
 }

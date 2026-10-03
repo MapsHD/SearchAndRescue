@@ -47,6 +47,18 @@ inline std::vector<VertexBufferAttributeLayout> opengl_vertex_array_get_vertex_l
             {1, 1, /* GL_FLOAT */ 0x1406, /* GL_FALSE */ 0, sizeof(PointIntensity), offsetof(PointIntensity, intensity)}};
 }
 
+// Associates a single VBO with a set of vertex attribute layouts.
+// binding_index is the VAO vertex-buffer binding slot to use.
+// When UINT32_MAX (the default) the first layout entry's location is used as
+// the binding slot, which preserves the legacy one-buffer-per-attribute behaviour.
+struct VertexBufferBinding
+{
+    Buffer*                                  buffer           = nullptr;
+    bool                                     buffer_ownership = false;
+    std::vector<VertexBufferAttributeLayout> layout           = {};
+    uint32_t                                 binding_index    = UINT32_MAX;
+};
+
 class VertexArray
 {
 private:
@@ -56,7 +68,13 @@ private:
     VertexArrayIMPL* _impl = nullptr;
 
 public:
+    // Legacy single-VBO constructor (index buffer optional).
     explicit VertexArray(Buffer* vertex_buffer, const bool vertex_buffer_ownership, Buffer* index_buffer, const bool index_buffer_ownership, const std::vector<VertexBufferAttributeLayout>& layout);
+
+    // Multi-VBO constructor: each VertexBufferBinding is attached as a separate
+    // buffer slot.  The optional index_buffer is not owned by any binding entry.
+    explicit VertexArray(const std::vector<VertexBufferBinding>& bindings, Buffer* index_buffer, const bool index_buffer_ownership);
+
     ~VertexArray();
 
     [[nodiscard]] uint32_t GetID() const;

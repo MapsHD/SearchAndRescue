@@ -1,4 +1,4 @@
-﻿// clang-format off
+// clang-format off
 #include <spdlog/spdlog.h>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -180,14 +180,12 @@ int main()
     glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
-    Program* origin_program                = make_program(GetProgramShaderSources_Origin());
-    Program* camera_target_program         = make_program(GetProgramShaderSources_CameraTarger());
-    Program* point_cloud_program           = make_program(GetProgramShaderSources_PointCloud());
-    Program* point_cloud_color_map_program = make_program(GetProgramShaderSources_PointCloudColorMap());
-    Program* trajectory_program            = make_program(GetProgramShaderSources_Trajectory());
-#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
-    Program* trajectory_axes_program = make_program(GetProgramShaderSources_TrajectoryOrientations());
-#endif
+    Program* origin_program                 = make_program(GetProgramShaderSources_Origin());
+    Program* camera_target_program          = make_program(GetProgramShaderSources_CameraTarger());
+    Program* point_cloud_program            = make_program(GetProgramShaderSources_PointCloud());
+    Program* point_cloud_color_map_program  = make_program(GetProgramShaderSources_PointCloudColorMap());
+    Program* trajectory_program             = make_program(GetProgramShaderSources_Trajectory());
+    Program* trajectory_axes_program        = make_program(GetProgramShaderSources_TrajectoryOrientations());
     Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
     Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
     Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
@@ -570,8 +568,9 @@ int main()
                 _project_data.trajectory_orientations_mat33[_project_data.trajectory_index].orientation = rotation;
 
                 _project_data.trajectory_positions_vbo->Upload(&position, sizeof(position), sizeof(Point) * _project_data.trajectory_index);
-                const glm::vec4 gpu_orientation[3] = {glm::vec4(rotation[0], 0.0f), glm::vec4(rotation[1], 0.0f), glm::vec4(rotation[2], 0.0f)};
-                _project_data.trajectory_orientations_ssbo->Upload(gpu_orientation, sizeof(gpu_orientation), sizeof(gpu_orientation) * _project_data.trajectory_index);
+                // Upload the three rotation columns as tightly-packed vec3s (matching OrientationVertex layout)
+                const glm::vec3 gpu_orientation[3] = {rotation[0], rotation[1], rotation[2]};
+                _project_data.trajectory_orientations_vbo->Upload(gpu_orientation, sizeof(gpu_orientation), sizeof(gpu_orientation) * _project_data.trajectory_index);
             }
         }
 
@@ -1199,17 +1198,14 @@ int main()
                     _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
                     glLineWidth(1.0f);
                 }
-#if HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 == 0
-                if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_orientations_ssbo)
+                if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_axes_vao)
                 {
                     trajectory_axes_program->Bind();
                     trajectory_axes_program->PushUniform16F32("u_MVP", MVP);
                     trajectory_axes_program->PushUniform1F32("u_AxisLength", _user_settings.trajectory.orientation_axis_length);
-                    _project_data.trajectory_orientations_ssbo->SetAsShaderResource(GL_SHADER_STORAGE_BUFFER, 0, _project_data.trajectory_orientations_ssbo->GetSize(), 0);
-                    _project_data.trajectory_positions_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
-                    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+                    _project_data.trajectory_axes_vao->Bind();
+                    _project_data.trajectory_axes_vao->DrawArray(GL_POINTS, _project_data.trajectory_positions.size());
                 }
-#endif
             }
 
             // MEASUREMENT LINES : draw completed entries as 3-D lines in world space
