@@ -182,7 +182,7 @@ int main()
     // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     // glDebugMessageCallback(ErrorCallback::OpenGL, nullptr);
 
-    glEnable(GL_PROGRAM_POINT_SIZE);
+    // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
     Program* origin_program                 = make_program(GetProgramShaderSources_Origin());
