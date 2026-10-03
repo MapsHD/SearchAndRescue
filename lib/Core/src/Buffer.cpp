@@ -20,6 +20,7 @@ Buffer::Buffer(const uint32_t flags, const size_t size, const void* data)
     _impl->flags = flags;
     _impl->size  = size;
 
+#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
     GLenum usage = GL_STATIC_DRAW;
     if ((flags & GL_DYNAMIC_STORAGE_BIT) != 0 || flags == GL_DYNAMIC_DRAW)
     {
@@ -42,11 +43,20 @@ Buffer::Buffer(const uint32_t flags, const size_t size, const void* data)
     glBindBuffer(GL_COPY_WRITE_BUFFER, _impl->id);
     glBufferData(GL_COPY_WRITE_BUFFER, static_cast<GLsizeiptr>(_impl->size), data, usage);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+#else
+    glCreateBuffers(1, &_impl->id);
+    glNamedBufferStorage(_impl->id, _impl->size, data, _impl->flags);
+#endif
 }
 
 Buffer::~Buffer()
 {
+#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
     glDeleteBuffers(1, &_impl->id);
+#else
+    glInvalidateBufferData(_impl->id);
+    glDeleteBuffers(1, &_impl->id);
+#endif
 
     delete _impl;
 }
@@ -68,11 +78,19 @@ size_t Buffer::GetSize() const
 
 void Buffer::Upload(const void* data, const size_t size, const size_t offset) const
 {
+#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
     if ((_impl->flags & GL_DYNAMIC_STORAGE_BIT) == 0 && _impl->flags != GL_DYNAMIC_DRAW && _impl->flags != GL_STREAM_DRAW)
     {
         spdlog::critical("Buffer ID = {} was created without dynamic usage but Upload() was called - upload rejected!", _impl->id);
         return;
     }
+#else
+    if ((_impl->flags & GL_DYNAMIC_STORAGE_BIT) == 0)
+    {
+        spdlog::critical("Buffer ID = {} was created without GL_DYNAMIC_STORAGE_BIT but Upload() was called - upload rejected!", _impl->id);
+        return;
+    }
+#endif
 
     if (offset > _impl->size || size > (_impl->size - offset))
     {
@@ -80,9 +98,13 @@ void Buffer::Upload(const void* data, const size_t size, const size_t offset) co
         return;
     }
 
+#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
     glBindBuffer(GL_COPY_WRITE_BUFFER, _impl->id);
     glBufferSubData(GL_COPY_WRITE_BUFFER, static_cast<GLintptr>(offset), static_cast<GLsizeiptr>(size), data);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+#else
+    glNamedBufferSubData(_impl->id, offset, size, data);
+#endif
 }
 
 void Buffer::SetAsShaderResource(const uint32_t resource_type, const uint32_t binding, const size_t size, const size_t offset) const
