@@ -383,36 +383,50 @@ int main()
                     ImGui::Text("Shortcuts");
                     if (ImGui::BeginItemTooltip())
                     {
-                        if (ImGui::BeginTable("##shortcuts", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        auto shortcut_row = [](const char* id, const char* input, const char* description)
+                        {
+                            ImGui::TableNextRow();
+                            ImGui::TableSetColumnIndex(0);
+                            ImGui::TextUnformatted(id);
+                            ImGui::TableSetColumnIndex(1);
+                            ImGui::TextUnformatted(input);
+                            ImGui::TableSetColumnIndex(2);
+                            ImGui::TextUnformatted(description);
+                        };
+
+                        ImGui::TextUnformatted("Movement");
+                        if (ImGui::BeginTable("##shortcuts_movement", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                         {
                             ImGui::TableSetupColumn("ID");
                             ImGui::TableSetupColumn("Input");
                             ImGui::TableSetupColumn("Description");
                             ImGui::TableHeadersRow();
 
-                            auto shortcut_row = [](const char* id, const char* input, const char* description)
-                            {
-                                ImGui::TableNextRow();
-                                ImGui::TableSetColumnIndex(0);
-                                ImGui::TextUnformatted(id);
-                                ImGui::TableSetColumnIndex(1);
-                                ImGui::TextUnformatted(input);
-                                ImGui::TableSetColumnIndex(2);
-                                ImGui::TextUnformatted(description);
-                            };
-
                             shortcut_row("0", "LMB drag", "Orbit the camera around its target");
                             shortcut_row("1", "RMB drag", "Pan the camera");
                             shortcut_row("2", "Scroll", "Zoom (hold Shift for faster zoom)");
-                            shortcut_row("3", "Shift + RMB drag", "Fast panning");
-                            shortcut_row("4", "G", "Show stretcher gizmo : move / rotate current trajectory pose");
-                            shortcut_row("5", "S", "Snap viewport 1 camera target to current trajectory pose");
-                            shortcut_row("6", "Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
-                            shortcut_row("7", "Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
-                            shortcut_row("8", "Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
-                            shortcut_row("9", "Alt + LMB", "Pick trajectory point : sets the current trajectory index");
-                            shortcut_row("10", "Alt + RMB", "Snap camera target to trajectory point (leaves stretcher)");
-                            shortcut_row("11", "Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
+                            shortcut_row("3", "Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
+                            shortcut_row("4", "Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
+                            shortcut_row("5", "Alt + LMB", "Pick trajectory point : sets the current trajectory index");
+                            shortcut_row("6", "Alt + RMB", "Snap camera target to trajectory point (leaves stretcher)");
+
+                            ImGui::EndTable();
+                        }
+
+                        ImGui::Spacing();
+
+                        ImGui::TextUnformatted("Processing");
+                        if (ImGui::BeginTable("##shortcuts_processing", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("ID");
+                            ImGui::TableSetupColumn("Input");
+                            ImGui::TableSetupColumn("Description");
+                            ImGui::TableHeadersRow();
+
+                            shortcut_row("0", "G", "Show stretcher gizmo : move / rotate current trajectory pose");
+                            shortcut_row("1", "S", "Snap viewport 1 camera target to current trajectory pose");
+                            shortcut_row("2", "Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
+                            shortcut_row("3", "Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
 
                             ImGui::EndTable();
                         }

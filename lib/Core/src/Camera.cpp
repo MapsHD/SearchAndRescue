@@ -337,7 +337,7 @@ void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
 
         if (camera.panning)
         {
-            float panning_multiplier = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) ? 50.0f : 10.0f;
+            float panning_multiplier = 10.0f;
             delta *= panning_multiplier;
             camera.pan(delta.x, delta.y);
         }
@@ -426,17 +426,15 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         return;
     }
 
-    float scroll_multiplier = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) ? 10.0f : 1.0f;
-
     // For locked-axis cameras, scrolling adjusts the view axis length
     // (trajectory position -> camera distance) instead of free zoom.
     if (ctx->camera_modes[idx] != CameraMode::CAMERA_MODE_FREE_ORBIT)
     {
-        ctx->view_axis_distance[idx] = std::max(0.1f, ctx->view_axis_distance[idx] - static_cast<float>(yoffset) * 0.5f * scroll_multiplier);
+        ctx->view_axis_distance[idx] = std::max(0.1f, ctx->view_axis_distance[idx] - static_cast<float>(yoffset) * 0.5f);
         return;
     }
 
-    ctx->cameras[idx].zoom(yoffset * scroll_multiplier);
+    ctx->cameras[idx].zoom(yoffset);
 }
 
 void size_callback(GLFWwindow* window, int32_t width, int32_t height)
