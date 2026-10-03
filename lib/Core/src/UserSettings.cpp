@@ -89,7 +89,7 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
 {
     if (ImGui::Begin("User settings", &open))
     {
-        if (ImGui::TreeNode("Save / Load"))
+        if (ImGui::TreeNode("Save / Load / Reset"))
         {
             if (ImGui::Button("Save to JSON"))
             {
@@ -104,11 +104,18 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                 }
             }
 
+            ImGui::SameLine();
             if (ImGui::Button("Load from JSON"))
             {
                 std::string selected;
                 if (PFDOpenFile("Load user settings", "JSON files", "*.json", selected) && !UserSettingsLoadJSON(selected, user_settings))
                     spdlog::warn("Failed to load user settings from {}", selected);
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Reset to defaults"))
+            {
+                user_settings = UserSettings{};
             }
             ImGui::TreePop();
         }
@@ -345,73 +352,128 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     const json* stretcher    = FindObject(settings, "stretcher");
     const json* point_cloud  = FindObject(settings, "point_cloud");
     const json* collision    = FindObject(settings, "collision");
-    if (!io || !origin || !target || !trajectory || !measurements || !stretcher || !point_cloud || !collision)
-        return false;
+
+    // A helper that logs a warning when a setting cannot be read and leaves
+    // the output at its already-initialised default value.
+    const auto TryRead = [&path](const json* section, const char* section_name, const char* key, auto& out)
+    {
+        if (!section || !ReadSetting(*section, key, out))
+            spdlog::warn("UserSettings ({}): failed to load {}.{}, using default", path.string(), section_name, key);
+    };
 
     UserSettings loaded;
-    if (!(ReadSetting(*io, "map_load_extent", loaded.io.map_load_extent) &&
-          ReadSetting(*io, "map_load_decimation_factor", loaded.io.map_load_decimation_factor) &&
-          ReadSetting(*io, "map_load_decimation_levels", loaded.io.map_load_decimation_levels) &&
-          ReadSetting(*io, "map_load_minimum_first_level_points", loaded.io.map_load_minimum_first_level_points) &&
-          ReadSetting(*io, "map_load_use_center_extent", loaded.io.map_load_use_center_extent) &&
-          ReadSetting(*io, "trajectory_load_every_nth", loaded.io.trajectory_load_every_nth) &&
-          ReadSetting(*origin, "draw_enable", loaded.origin.draw_enable) &&
-          ReadSetting(*origin, "scale", loaded.origin.scale) &&
-          ReadSetting(*origin, "width", loaded.origin.width) &&
-          ReadSetting(*target, "draw_enable", loaded.target.draw_enable) &&
-          ReadSetting(*target, "scale", loaded.target.scale) &&
-          ReadSetting(*target, "width", loaded.target.width) &&
-          ReadSetting(*trajectory, "draw_enable", loaded.trajectory.draw_enable) &&
-          ReadSetting(*trajectory, "width", loaded.trajectory.width) &&
-          ReadSetting(*trajectory, "point_size", loaded.trajectory.point_size) &&
-          ReadSetting(*trajectory, "display_mode", loaded.trajectory.display_mode_value) &&
-          ReadSetting(*measurements, "draw_enable", loaded.measurements.draw_enable) &&
-          ReadSetting(*stretcher, "draw_enable", loaded.stretcher.draw_enable) &&
-          ReadSetting(*stretcher, "draw_enable_bbox", loaded.stretcher.draw_enable_bbox) &&
-          ReadSetting(*stretcher, "bbox_width", loaded.stretcher.bbox_width) &&
-          ReadSetting(*point_cloud, "point_size", loaded.point_cloud.point_size) &&
-          ReadSetting(*point_cloud, "bbox_width", loaded.point_cloud.bbox_width) &&
-          ReadSetting(*point_cloud, "bbox_width_in_obb", loaded.point_cloud.bbox_width_in_obb) &&
-          ReadSetting(*point_cloud, "bbox_width_in_obb_proximity", loaded.point_cloud.bbox_width_in_obb_proximity) &&
-          ReadSetting(*point_cloud, "draw_enable_bbox", loaded.point_cloud.draw_enable_bbox) &&
-          ReadSetting(*point_cloud, "draw_enable_bbox_out", loaded.point_cloud.draw_enable_bbox_out) &&
-          ReadSetting(*point_cloud, "draw_enable_bbox_in_obb", loaded.point_cloud.draw_enable_bbox_in_obb) &&
-          ReadSetting(*point_cloud, "draw_enable_bbox_in_obb_proximity", loaded.point_cloud.draw_enable_bbox_in_obb_proximity) &&
-          ReadSetting(*point_cloud, "draw_enable_pc", loaded.point_cloud.draw_enable_pc) &&
-          ReadSetting(*point_cloud, "draw_enable_pc_out", loaded.point_cloud.draw_enable_pc_out) &&
-          ReadSetting(*point_cloud, "draw_enable_pc_in_obb", loaded.point_cloud.draw_enable_pc_in_obb) &&
-          ReadSetting(*point_cloud, "draw_enable_pc_in_obb_proximity", loaded.point_cloud.draw_enable_pc_in_obb_proximity) &&
-          ReadSetting(*point_cloud, "display_mode", loaded.point_cloud.display_mode_value) &&
-          ReadSetting(*point_cloud, "colormap", loaded.point_cloud.colormap_value) &&
-          ReadSetting(*collision, "radious", loaded.collision.radious) &&
-          ReadSetting(*collision, "points_size", loaded.collision.points_size)))
-        return false;
 
-    if (trajectory->contains("draw_orientations") && !ReadSetting(*trajectory, "draw_orientations", loaded.trajectory.draw_orientations))
-        return false;
-    if (trajectory->contains("orientation_axis_length") &&
-        !ReadSetting(*trajectory, "orientation_axis_length", loaded.trajectory.orientation_axis_length))
-        return false;
-    if (!(loaded.trajectory.orientation_axis_length > 0.0f) || loaded.trajectory.orientation_axis_length > 100.0f)
-        return false;
-
+    // opengl
     Vec3FromJSON(opengl, "clear_color", loaded.opengl.clear_color);
+
+    // io
+    TryRead(io, "io", "map_load_extent", loaded.io.map_load_extent);
+    TryRead(io, "io", "map_load_decimation_factor", loaded.io.map_load_decimation_factor);
+    TryRead(io, "io", "map_load_decimation_levels", loaded.io.map_load_decimation_levels);
+    TryRead(io, "io", "map_load_minimum_first_level_points", loaded.io.map_load_minimum_first_level_points);
+    TryRead(io, "io", "map_load_use_center_extent", loaded.io.map_load_use_center_extent);
+    TryRead(io, "io", "trajectory_load_every_nth", loaded.io.trajectory_load_every_nth);
+
+    // origin
+    TryRead(origin, "origin", "draw_enable", loaded.origin.draw_enable);
+    TryRead(origin, "origin", "scale", loaded.origin.scale);
+    TryRead(origin, "origin", "width", loaded.origin.width);
+
+    // target
+    TryRead(target, "target", "draw_enable", loaded.target.draw_enable);
+    TryRead(target, "target", "scale", loaded.target.scale);
+    TryRead(target, "target", "width", loaded.target.width);
     Vec3FromJSON(target, "color", loaded.target.color);
+
+    // trajectory
+    TryRead(trajectory, "trajectory", "draw_enable", loaded.trajectory.draw_enable);
+    TryRead(trajectory, "trajectory", "width", loaded.trajectory.width);
+    TryRead(trajectory, "trajectory", "point_size", loaded.trajectory.point_size);
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
+
+    if (trajectory && trajectory->contains("draw_orientations"))
+        TryRead(trajectory, "trajectory", "draw_orientations", loaded.trajectory.draw_orientations);
+
+    if (trajectory && trajectory->contains("orientation_axis_length"))
+    {
+        TryRead(trajectory, "trajectory", "orientation_axis_length", loaded.trajectory.orientation_axis_length);
+        if (!(loaded.trajectory.orientation_axis_length > 0.0f) || loaded.trajectory.orientation_axis_length > 100.0f)
+        {
+            spdlog::warn("UserSettings ({}): trajectory.orientation_axis_length out of range, using default",
+                         path.string());
+            loaded.trajectory.orientation_axis_length = UserSettings{}.trajectory.orientation_axis_length;
+        }
+    }
+
+    {
+        int32_t display_mode_value = static_cast<int32_t>(loaded.trajectory.display_mode);
+        TryRead(trajectory, "trajectory", "display_mode", display_mode_value);
+        if (display_mode_value < 0 || display_mode_value > 1)
+        {
+            spdlog::warn("UserSettings ({}): trajectory.display_mode value {} out of range, using default",
+                         path.string(), display_mode_value);
+        }
+        else
+        {
+            loaded.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(display_mode_value);
+        }
+    }
+
+    // measurements
+    TryRead(measurements, "measurements", "draw_enable", loaded.measurements.draw_enable);
+
+    // stretcher
+    TryRead(stretcher, "stretcher", "draw_enable", loaded.stretcher.draw_enable);
+    TryRead(stretcher, "stretcher", "draw_enable_bbox", loaded.stretcher.draw_enable_bbox);
+    TryRead(stretcher, "stretcher", "bbox_width", loaded.stretcher.bbox_width);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
+
+    // point_cloud
+    TryRead(point_cloud, "point_cloud", "point_size", loaded.point_cloud.point_size);
+    TryRead(point_cloud, "point_cloud", "bbox_width", loaded.point_cloud.bbox_width);
+    TryRead(point_cloud, "point_cloud", "bbox_width_in_obb", loaded.point_cloud.bbox_width_in_obb);
+    TryRead(point_cloud, "point_cloud", "bbox_width_in_obb_proximity", loaded.point_cloud.bbox_width_in_obb_proximity);
+    TryRead(point_cloud, "point_cloud", "draw_enable_bbox", loaded.point_cloud.draw_enable_bbox);
+    TryRead(point_cloud, "point_cloud", "draw_enable_bbox_out", loaded.point_cloud.draw_enable_bbox_out);
+    TryRead(point_cloud, "point_cloud", "draw_enable_bbox_in_obb", loaded.point_cloud.draw_enable_bbox_in_obb);
+    TryRead(point_cloud, "point_cloud", "draw_enable_bbox_in_obb_proximity", loaded.point_cloud.draw_enable_bbox_in_obb_proximity);
+    TryRead(point_cloud, "point_cloud", "draw_enable_pc", loaded.point_cloud.draw_enable_pc);
+    TryRead(point_cloud, "point_cloud", "draw_enable_pc_out", loaded.point_cloud.draw_enable_pc_out);
+    TryRead(point_cloud, "point_cloud", "draw_enable_pc_in_obb", loaded.point_cloud.draw_enable_pc_in_obb);
+    TryRead(point_cloud, "point_cloud", "draw_enable_pc_in_obb_proximity", loaded.point_cloud.draw_enable_pc_in_obb_proximity);
+
+    {
+        int32_t display_mode_value = static_cast<int32_t>(loaded.point_cloud.display_mode);
+        TryRead(point_cloud, "point_cloud", "display_mode", display_mode_value);
+        if (display_mode_value < 0 || display_mode_value > 4)
+        {
+            spdlog::warn("UserSettings ({}): point_cloud.display_mode value {} out of range, using default",
+                         path.string(), display_mode_value);
+        }
+        else
+        {
+            loaded.point_cloud.display_mode = static_cast<PointCloudDisplayMode>(display_mode_value);
+        }
+    }
+
+    {
+        int32_t colormap_value = static_cast<int32_t>(loaded.point_cloud.colormap);
+        TryRead(point_cloud, "point_cloud", "colormap", colormap_value);
+        if (colormap_value < 0 || colormap_value > 4)
+        {
+            spdlog::warn("UserSettings ({}): point_cloud.colormap value {} out of range, using default",
+                         path.string(), colormap_value);
+        }
+        else
+        {
+            loaded.point_cloud.colormap = static_cast<ColorMapType>(colormap_value);
+        }
+    }
+
+    // collision
+    TryRead(collision, "collision", "radious", loaded.collision.radious);
+    TryRead(collision, "collision", "points_size", loaded.collision.points_size);
     Vec3FromJSON(collision, "points_color", loaded.collision.points_color);
-
-    if (loaded.trajectory.display_mode_value < 0 || loaded.trajectory.display_mode_value > 1)
-        return false;
-    loaded.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(loaded.trajectory.display_mode_value);
-
-    if (loaded.point_cloud.display_mode_value < 0 || loaded.point_cloud.display_mode_value > 4)
-        return false;
-    loaded.point_cloud.display_mode = static_cast<PointCloudDisplayMode>(loaded.point_cloud.display_mode_value);
-
-    if (loaded.point_cloud.colormap_value < 0 || loaded.point_cloud.colormap_value > 4)
-        return false;
-    loaded.point_cloud.colormap = static_cast<ColorMapType>(loaded.point_cloud.colormap_value);
 
     user_settings_out = loaded;
     return true;

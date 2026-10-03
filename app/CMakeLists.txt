@@ -6,3 +6,8 @@ target_link_libraries(HDMapping-SearchAndRescue
     PRIVATE
         Core
 )
+
+target_include_directories(HDMapping-SearchAndRescue
+    PRIVATE
+        ${REPOSITORY_DIRECTORY}/generated
+)

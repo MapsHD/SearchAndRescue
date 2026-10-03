@@ -30,6 +30,8 @@
 #include <Core/Structures.h>
 #include <Core/UserSettings.h>
 
+#include <HDM_SAR_ConfigureInfo.hpp>
+
 #define CONCATENATE_STRING_2(x) #x
 #define CONCATENATE_STRING(x) CONCATENATE_STRING_2(x)
 
@@ -216,6 +218,7 @@ int main()
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    ImPlot::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -332,50 +335,48 @@ int main()
 
                 // Right-aligned "Shortcuts" text with tooltip : table of all keyboard / mouse controls
                 {
-                    const float authors_text_width = ImGui::CalcTextSize("Authors").x;
-                    const float shortcuts_width    = ImGui::CalcTextSize("Shortcuts").x;
+                    const float authors_text_width  = ImGui::CalcTextSize("Authors").x;
+                    const float shortcuts_width     = ImGui::CalcTextSize("Shortcuts").x;
+                    const float configuration_width = ImGui::CalcTextSize("Configuration").x;
 
-                    // Just for nicer looks
-                    const float artificial_padding = 10.0f;
-
-                    ImGui::SameLine(ImGui::GetWindowWidth() - artificial_padding - authors_text_width - shortcuts_width - ImGui::GetStyle().FramePadding.x * 2.0f);
                     ImGui::Text("Shortcuts");
                     if (ImGui::BeginItemTooltip())
                     {
-                        if (ImGui::BeginTable("##shortcuts", 2, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        if (ImGui::BeginTable("##shortcuts", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                         {
+                            ImGui::TableSetupColumn("ID");
                             ImGui::TableSetupColumn("Input");
                             ImGui::TableSetupColumn("Description");
                             ImGui::TableHeadersRow();
 
-                            auto shortcut_row = [](const char* input, const char* description)
+                            auto shortcut_row = [](const char* id, const char* input, const char* description)
                             {
                                 ImGui::TableNextRow();
                                 ImGui::TableSetColumnIndex(0);
-                                ImGui::TextUnformatted(input);
+                                ImGui::TextUnformatted(id);
                                 ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(input);
+                                ImGui::TableSetColumnIndex(2);
                                 ImGui::TextUnformatted(description);
                             };
 
-                            shortcut_row("LMB drag", "Orbit the camera around its target");
-                            shortcut_row("RMB drag", "Pan the camera");
-                            shortcut_row("Scroll", "Zoom (hold Shift for faster zoom)");
-                            shortcut_row("Shift + RMB drag", "Fast panning");
-                            shortcut_row("G", "Show stretcher gizmo : move / rotate current trajectory pose");
-                            shortcut_row("S", "Snap viewport 1 camera target to current trajectory pose");
-                            shortcut_row("Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
-                            shortcut_row("Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
-                            shortcut_row("Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
-                            shortcut_row("Alt + LMB", "Pick trajectory point : sets the current trajectory index");
-                            shortcut_row("Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
+                            shortcut_row("0", "LMB drag", "Orbit the camera around its target");
+                            shortcut_row("1", "RMB drag", "Pan the camera");
+                            shortcut_row("2", "Scroll", "Zoom (hold Shift for faster zoom)");
+                            shortcut_row("3", "Shift + RMB drag", "Fast panning");
+                            shortcut_row("4", "G", "Show stretcher gizmo : move / rotate current trajectory pose");
+                            shortcut_row("5", "S", "Snap viewport 1 camera target to current trajectory pose");
+                            shortcut_row("6", "Shift + S", "Toggle continuous snap of viewport 1 camera target to trajectory pose");
+                            shortcut_row("7", "Ctrl + LMB", "Pick point cloud bucket : camera target moves to its center");
+                            shortcut_row("8", "Ctrl + RMB", "Pick bucket and focus camera target on closest point to the ray");
+                            shortcut_row("9", "Alt + LMB", "Pick trajectory point : sets the current trajectory index");
+                            shortcut_row("10", "Shift + LMB", "Measurement : pick start point, then pick end point to measure distance");
 
                             ImGui::EndTable();
                         }
                         ImGui::EndTooltip();
                     }
 
-                    // Right-aligned "Authors" text with tooltip : table of contributors
-                    ImGui::SameLine(ImGui::GetWindowWidth() - authors_text_width - ImGui::GetStyle().FramePadding.x * 2.0f);
                     ImGui::Text("Authors");
                     if (ImGui::BeginItemTooltip())
                     {
@@ -402,6 +403,49 @@ int main()
 
                             author_row("1", "Michal Wlasiuk", "michal.mwa87@gmail.com", "Project development");
                             author_row("2", "Janusz Bedkowski", "januszbedkowski@gmail.com", "Project supervisor");
+
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTooltip();
+                    }
+
+                    ImGui::Text("Configuration");
+                    if (ImGui::BeginItemTooltip())
+                    {
+                        if (ImGui::BeginTable("##configuration", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+                        {
+                            ImGui::TableSetupColumn("ID");
+                            ImGui::TableSetupColumn("Name");
+                            ImGui::TableSetupColumn("Value");
+                            ImGui::TableHeadersRow();
+
+                            auto info_row = [](const char* id, const char* name, const char* velue)
+                            {
+                                ImGui::TableNextRow();
+                                ImGui::TableSetColumnIndex(0);
+                                ImGui::TextUnformatted(id);
+                                ImGui::TableSetColumnIndex(1);
+                                ImGui::TextUnformatted(name);
+                                ImGui::TableSetColumnIndex(2);
+                                ImGui::TextUnformatted(velue);
+                            };
+
+                            info_row("0", "HDM_SAR_CONFIGURE_BUILD_TYPES", HDM_SAR_CONFIGURE_BUILD_TYPES);
+                            info_row("1", "HDM_SAR_CONFIGURE_IS_MULTICONFIG", HDM_SAR_CONFIGURE_IS_MULTICONFIG);
+                            info_row("2", "HDM_SAR_CONFIGURE_SYSTEM", HDM_SAR_CONFIGURE_SYSTEM);
+                            info_row("3", "HDM_SAR_CONFIGURE_SYSTEM_VERSION", HDM_SAR_CONFIGURE_SYSTEM_VERSION);
+                            info_row("4", "HDM_SAR_CONFIGURE_CPU", HDM_SAR_CONFIGURE_CPU);
+                            info_row("5", "HDM_SAR_CONFIGURE_COMPILER", HDM_SAR_CONFIGURE_COMPILER);
+                            info_row("6", "HDM_SAR_CONFIGURE_COMPILER_VERSION", HDM_SAR_CONFIGURE_COMPILER_VERSION);
+                            info_row("7", "HDM_SAR_CONFIGURE_COMPILER_PATH", HDM_SAR_CONFIGURE_COMPILER_PATH);
+                            info_row("8", "HDM_SAR_CONFIGURE_CMAKE_VERSION", HDM_SAR_CONFIGURE_CMAKE_VERSION);
+                            info_row("9", "HDM_SAR_CONFIGURE_GENERATOR", HDM_SAR_CONFIGURE_GENERATOR);
+                            info_row("10", "HDM_SAR_CONFIGURE_PROJECT_NAME", HDM_SAR_CONFIGURE_PROJECT_NAME);
+                            info_row("11", "HDM_SAR_CONFIGURE_PROJECT_VERSION", HDM_SAR_CONFIGURE_PROJECT_VERSION);
+                            info_row("12", "HDM_SAR_CONFIGURE_CXX_STANDARD", HDM_SAR_CONFIGURE_CXX_STANDARD);
+                            info_row("13", "HDM_SAR_CONFIGURE_TIMESTAMP", HDM_SAR_CONFIGURE_TIMESTAMP);
+                            info_row("14", "HDM_SAR_CONFIGURE_GIT_HASH", HDM_SAR_CONFIGURE_GIT_HASH);
+                            info_row("15", "HDM_SAR_CONFIGURE_GIT_BRANCH", HDM_SAR_CONFIGURE_GIT_BRANCH);
 
                             ImGui::EndTable();
                         }

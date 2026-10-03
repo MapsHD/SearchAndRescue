@@ -59,6 +59,8 @@ set(SPDLOG_BUILD_EXAMPLE   OFF CACHE BOOL "" FORCE)
 
 set(LASZIP_BUILD_STATIC    ON  CACHE BOOL "" FORCE)
 
+include(${REPOSITORY_DIRECTORY}/cmake/configure.cmake)
+
 include(${REPOSITORY_DIRECTORY}/cmake/glad.cmake)
 include(${REPOSITORY_DIRECTORY}/cmake/imgui.cmake)
 include(${REPOSITORY_DIRECTORY}/cmake/imguizmo.cmake)
