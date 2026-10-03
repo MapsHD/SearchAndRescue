@@ -82,6 +82,43 @@ foreach(VAR
     endif()
 endforeach()
 
+execute_process(
+    COMMAND git status --porcelain
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE HDM_SAR_CONFIGURE_GIT_STATUS_PORCELAIN
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(HDM_SAR_CONFIGURE_GIT_STATUS_PORCELAIN STREQUAL "")
+    set(HDM_SAR_CONFIGURE_GIT_IS_DIRTY "false")
+else()
+    set(HDM_SAR_CONFIGURE_GIT_IS_DIRTY "true")
+endif()
+
+# ------------------------------------------------------------
+# Architecture and Flags
+# ------------------------------------------------------------
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(HDM_SAR_CONFIGURE_IS_64_BIT "true")
+else()
+    set(HDM_SAR_CONFIGURE_IS_64_BIT "false")
+endif()
+
+set(HDM_SAR_CONFIGURE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+set(HDM_SAR_CONFIGURE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+set(HDM_SAR_CONFIGURE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+
+set(HDM_SAR_CONFIGURE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+
+# ------------------------------------------------------------
+# Host System
+# ------------------------------------------------------------
+
+set(HDM_SAR_CONFIGURE_HOST_SYSTEM "${CMAKE_HOST_SYSTEM_NAME}")
+set(HDM_SAR_CONFIGURE_HOST_SYSTEM_VERSION "${CMAKE_HOST_SYSTEM_VERSION}")
+set(HDM_SAR_CONFIGURE_HOST_CPU "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+
 configure_file(
     "${REPOSITORY_DIRECTORY}/cmake/configure/configure.hpp.in"
     "${REPOSITORY_DIRECTORY}/generated/HDM_SAR_ConfigureInfo.hpp"

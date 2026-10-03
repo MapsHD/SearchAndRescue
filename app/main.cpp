@@ -345,7 +345,7 @@ int main()
 
                     const float total_width = authors_width + k_gap + shortcuts_width + k_gap + configuration_width + k_margin;
                     ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - total_width);
- 
+
                     ImGui::Text("Authors");
                     if (ImGui::BeginItemTooltip())
                     {
@@ -379,7 +379,7 @@ int main()
                     }
 
                     ImGui::SameLine(0.0f, k_gap);
- 
+
                     ImGui::Text("Shortcuts");
                     if (ImGui::BeginItemTooltip())
                     {
@@ -419,7 +419,7 @@ int main()
                     }
 
                     ImGui::SameLine(0.0f, k_gap);
- 
+
                     ImGui::Text("Configuration");
                     if (ImGui::BeginItemTooltip())
                     {
@@ -457,6 +457,14 @@ int main()
                             info_row("13", "HDM_SAR_CONFIGURE_TIMESTAMP", HDM_SAR_CONFIGURE_TIMESTAMP);
                             info_row("14", "HDM_SAR_CONFIGURE_GIT_HASH", HDM_SAR_CONFIGURE_GIT_HASH);
                             info_row("15", "HDM_SAR_CONFIGURE_GIT_BRANCH", HDM_SAR_CONFIGURE_GIT_BRANCH);
+                            info_row("16", "HDM_SAR_CONFIGURE_IS_64_BIT", HDM_SAR_CONFIGURE_IS_64_BIT);
+                            info_row("17", "HDM_SAR_CONFIGURE_CXX_FLAGS", HDM_SAR_CONFIGURE_CXX_FLAGS);
+                            info_row("18", "HDM_SAR_CONFIGURE_CXX_FLAGS_DEBUG", HDM_SAR_CONFIGURE_CXX_FLAGS_DEBUG);
+                            info_row("19", "HDM_SAR_CONFIGURE_CXX_FLAGS_RELEASE", HDM_SAR_CONFIGURE_CXX_FLAGS_RELEASE);
+                            info_row("20", "HDM_SAR_CONFIGURE_EXE_LINKER_FLAGS", HDM_SAR_CONFIGURE_EXE_LINKER_FLAGS);
+                            info_row("21", "HDM_SAR_CONFIGURE_HOST_SYSTEM", HDM_SAR_CONFIGURE_HOST_SYSTEM);
+                            info_row("22", "HDM_SAR_CONFIGURE_HOST_SYSTEM_VERSION", HDM_SAR_CONFIGURE_HOST_SYSTEM_VERSION);
+                            info_row("23", "HDM_SAR_CONFIGURE_HOST_CPU", HDM_SAR_CONFIGURE_HOST_CPU);
 
                             ImGui::EndTable();
                         }
