@@ -15,9 +15,22 @@ namespace
 {
     using json = nlohmann::json;
 
+    constexpr float PICK_RADIUS_M_MIN  = 0.001f;
+    constexpr float PICK_RADIUS_M_MAX  = 1.0f;
+    constexpr float PICK_RADIUS_PX_MIN = 0.5f;
+    constexpr float PICK_RADIUS_PX_MAX = 50.0f;
+
     json Vec3ToJSON(const glm::vec3& value)
     {
         return json::array({value.x, value.y, value.z});
+    }
+
+    json PickToleranceToJSON(const PointPickTolerance& tolerance)
+    {
+        return {
+            {"mode", static_cast<int32_t>(tolerance.mode)},
+            {"radius_m", tolerance.radius_m},
+            {"radius_px", tolerance.radius_px}};
     }
 
     const json* FindObject(const json& parent, const char* key)
@@ -82,6 +95,33 @@ namespace
             !(*it)[0].is_number() || !(*it)[1].is_number() || !(*it)[2].is_number())
             return;
         out = glm::vec3((*it)[0].get<float>(), (*it)[1].get<float>(), (*it)[2].get<float>());
+    }
+
+    void PickToleranceImGUI(const char* label, PointPickTolerance& tolerance)
+    {
+        if (!ImGui::TreeNode(label))
+            return;
+
+        const char* const modes = "World (m)\0Screen (px)\0Larger of both\0";
+        int32_t           mode  = static_cast<int32_t>(tolerance.mode);
+        if (ImGui::Combo("Tolerance mode", &mode, modes))
+        {
+            tolerance.mode = static_cast<PickToleranceMode>(mode);
+        }
+        ImGui::SetItemTooltip(
+            "World : fixed radius in metres.\n"
+            "Screen : radius in pixels, grows with the distance to the camera.\n"
+            "Larger of both : the bigger of the two at every distance.");
+
+        ImGui::BeginDisabled(tolerance.mode == PickToleranceMode::PICK_TOLERANCE_MODE_SCREEN);
+        ImGui::SliderFloat("Radius (m)", &tolerance.radius_m, PICK_RADIUS_M_MIN, PICK_RADIUS_M_MAX, "%.3f", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+
+        ImGui::BeginDisabled(tolerance.mode == PickToleranceMode::PICK_TOLERANCE_MODE_WORLD);
+        ImGui::SliderFloat("Radius (px)", &tolerance.radius_px, PICK_RADIUS_PX_MIN, PICK_RADIUS_PX_MAX, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+
+        ImGui::TreePop();
     }
 }
 
@@ -197,6 +237,15 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
         }
         ImGui::Separator();
 
+        if (ImGui::TreeNode("Picking"))
+        {
+            PickToleranceImGUI("Trajectory (Alt + LMB / RMB)", user_settings.picking.trajectory);
+            PickToleranceImGUI("Point snap (Ctrl + RMB)", user_settings.picking.point_snap);
+            PickToleranceImGUI("Measurement (Shift + LMB)", user_settings.picking.measurement);
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
+
         if (ImGui::TreeNode("Stretcher"))
         {
             ImGui::Checkbox("Enable draw", &user_settings.stretcher.draw_enable);
@@ -300,6 +349,10 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
           {"display_mode", static_cast<int32_t>(user_settings.trajectory.display_mode)},
           {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
         {"measurements", {{"draw_enable", user_settings.measurements.draw_enable}}},
+        {"picking",
+         {{"trajectory", PickToleranceToJSON(user_settings.picking.trajectory)},
+          {"point_snap", PickToleranceToJSON(user_settings.picking.point_snap)},
+          {"measurement", PickToleranceToJSON(user_settings.picking.measurement)}}},
         {"stretcher",
          {{"draw_enable", user_settings.stretcher.draw_enable},
           {"draw_enable_bbox", user_settings.stretcher.draw_enable_bbox},
@@ -349,6 +402,7 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     const json* target       = FindObject(settings, "target");
     const json* trajectory   = FindObject(settings, "trajectory");
     const json* measurements = FindObject(settings, "measurements");
+    const json* picking      = FindObject(settings, "picking");
     const json* stretcher    = FindObject(settings, "stretcher");
     const json* point_cloud  = FindObject(settings, "point_cloud");
     const json* collision    = FindObject(settings, "collision");
@@ -421,6 +475,47 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
 
     // measurements
     TryRead(measurements, "measurements", "draw_enable", loaded.measurements.draw_enable);
+
+    // picking : the whole section is optional, files saved before it was introduced keep the defaults
+    if (picking)
+    {
+        const auto LoadPickTolerance = [&](const char* name, PointPickTolerance& out)
+        {
+            const std::string        section_name = std::string("picking.") + name;
+            const json*              section      = FindObject(*picking, name);
+            const PointPickTolerance defaults     = out;
+
+            int32_t mode_value = static_cast<int32_t>(out.mode);
+            TryRead(section, section_name.c_str(), "mode", mode_value);
+            if (mode_value < 0 || mode_value > static_cast<int32_t>(PickToleranceMode::PICK_TOLERANCE_MODE_LARGEST))
+            {
+                spdlog::warn("UserSettings ({}): {}.mode value {} out of range, using default",
+                             path.string(), section_name, mode_value);
+            }
+            else
+            {
+                out.mode = static_cast<PickToleranceMode>(mode_value);
+            }
+
+            TryRead(section, section_name.c_str(), "radius_m", out.radius_m);
+            if (!(out.radius_m >= PICK_RADIUS_M_MIN && out.radius_m <= PICK_RADIUS_M_MAX))
+            {
+                spdlog::warn("UserSettings ({}): {}.radius_m out of range, using default", path.string(), section_name);
+                out.radius_m = defaults.radius_m;
+            }
+
+            TryRead(section, section_name.c_str(), "radius_px", out.radius_px);
+            if (!(out.radius_px >= PICK_RADIUS_PX_MIN && out.radius_px <= PICK_RADIUS_PX_MAX))
+            {
+                spdlog::warn("UserSettings ({}): {}.radius_px out of range, using default", path.string(), section_name);
+                out.radius_px = defaults.radius_px;
+            }
+        };
+
+        LoadPickTolerance("trajectory", loaded.picking.trajectory);
+        LoadPickTolerance("point_snap", loaded.picking.point_snap);
+        LoadPickTolerance("measurement", loaded.picking.measurement);
+    }
 
     // stretcher
     TryRead(stretcher, "stretcher", "draw_enable", loaded.stretcher.draw_enable);

@@ -121,6 +121,20 @@ struct ApplicationResources
     std::unique_ptr<RenderResources> render_resources;
 };
 
+static std::string describe_pick_tolerance(const PointPickTolerance& tolerance)
+{
+    switch (tolerance.mode)
+    {
+    case PickToleranceMode::PICK_TOLERANCE_MODE_WORLD:
+        return fmt::format("{:.3f} m", tolerance.radius_m);
+    case PickToleranceMode::PICK_TOLERANCE_MODE_SCREEN:
+        return fmt::format("{:.1f} px", tolerance.radius_px);
+    case PickToleranceMode::PICK_TOLERANCE_MODE_LARGEST:
+        break;
+    }
+    return fmt::format("the larger of {:.3f} m and {:.1f} px", tolerance.radius_m, tolerance.radius_px);
+}
+
 static WindowContext* get_window_context(GLFWwindow* window)
 {
     auto* context = static_cast<WindowContext*>(glfwGetWindowUserPointer(window));
@@ -836,9 +850,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                     if (alt)
                     {
-                        // Trajectory poses are sparse, use a larger tolerance than for point cloud points
-                        PointPickTolerance tolerance{};
-                        tolerance.radius_m = 0.025f;
+                        const PointPickTolerance& tolerance = _user_settings.picking.trajectory;
 
                         const std::optional<size_t> picked_index = pick_trajectory_point_along_ray(_project_data.trajectory_positions, pick_cam, ray_origin, ray_dir, tolerance);
 
@@ -859,13 +871,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         }
                         else
                         {
-                            spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", tolerance.radius_m);
+                            spdlog::warn("Trajectory picking missed ... (no trajectory point within {} of ray)", describe_pick_tolerance(tolerance));
                         }
                     }
                     else if (ctrl)
                     {
-                        PointPickTolerance tolerance{};
-                        tolerance.radius_m = 0.025f;
+                        const PointPickTolerance& tolerance = _user_settings.picking.point_snap;
 
                         const std::optional<glm::vec3> picked_point = pick_point_along_ray(_project_data.buckets, pick_cam, ray_origin, ray_dir, tolerance);
 
@@ -881,7 +892,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         }
                         else
                         {
-                            spdlog::warn("Point picking missed ... (no point within {:.2f} m of ray)", tolerance.radius_m);
+                            spdlog::warn("Point picking missed ... (no point within {} of ray)", describe_pick_tolerance(tolerance));
                         }
                     }
                 }
@@ -972,20 +983,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     glm::vec3 ray_dir{};
                     pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    // The pick tolerance is defined on screen : points are rendered as point_size pixel
-                    // squares, so a click on a visible point must hit it however far the camera is.
-                    // Collision points are drawn bigger than the rest of the cloud, use the largest size on screen.
-                    // A fixed world radius is kept as a lower bound for close-up views.
-                    float visible_point_size = _user_settings.point_cloud.point_size;
-                    if (_user_settings.point_cloud.draw_enable_pc && collision_point_count > 0)
-                    {
-                        visible_point_size = std::max(visible_point_size, _user_settings.collision.points_size);
-                    }
-
-                    const float framebuffer_to_screen = static_cast<float>(width) / static_cast<float>(framebuffer_width);
-
-                    PointPickTolerance tolerance{};
-                    tolerance.radius_px = 0.5f * visible_point_size * framebuffer_to_screen + 3.0f;
+                    const PointPickTolerance& tolerance = _user_settings.picking.measurement;
 
                     const std::optional<glm::vec3> picked_point = pick_point_along_ray(_project_data.buckets, pick_cam, ray_origin, ray_dir, tolerance);
 
@@ -1023,7 +1021,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     }
                     else
                     {
-                        spdlog::warn("Measurement picking missed in viewport {} : no point within {:.1f} px of the click between the near / far planes", pick_idx, tolerance.radius_px);
+                        spdlog::warn("Measurement picking missed in viewport {} : no point within {} of the click between the near / far planes", pick_idx, describe_pick_tolerance(tolerance));
                     }
                 }
             }

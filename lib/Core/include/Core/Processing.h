@@ -34,17 +34,6 @@ bool lod_in_camera_frustum(const PointCloudLOD& lod, const std::array<glm::vec4,
 
 bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<glm::vec4, 6>& planes);
 
-// Tolerance of point picking : perpendicular distance between a point and the picking ray
-struct PointPickTolerance
-{
-    // Fixed world-space radius, also the lower bound of the on-screen tolerance
-    float radius_m = 0.025f;
-
-    // Optional on-screen tolerance in pixels, converted to world units at the view depth of each point
-    // (0 disables it, only radius_m applies)
-    float radius_px = 0.0f;
-};
-
 // Picks the point cloud point under the ray cast from the camera (see Camera::screen_ray).
 //
 // Buckets outside the camera near / far planes (this includes everything behind a perspective camera) are

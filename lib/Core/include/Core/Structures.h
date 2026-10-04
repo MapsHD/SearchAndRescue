@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Core/Enums.h>
+
 #include <array>
 
 #include <glm/glm.hpp>
@@ -53,4 +55,17 @@ struct PointIntensity
 {
     glm::vec3 position  = {};
     float     intensity = {};
+};
+
+// Tolerance of point picking : perpendicular distance between a point and the picking ray
+struct PointPickTolerance
+{
+    PickToleranceMode mode = PickToleranceMode::PICK_TOLERANCE_MODE_WORLD;
+
+    // Fixed world-space radius, used by the WORLD and LARGEST modes
+    float radius_m = 0.025f;
+
+    // On-screen radius in pixels, converted to world units at the view depth of each point,
+    // used by the SCREEN and LARGEST modes
+    float radius_px = 4.0f;
 };

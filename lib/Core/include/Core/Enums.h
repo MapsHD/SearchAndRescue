@@ -57,6 +57,14 @@ enum class TrajectoryDisplayMode : int32_t
     TRAJECTORY_DISPLAY_MODE_POINTS     = 1
 };
 
+// How the radius of a pick tolerance is defined
+enum class PickToleranceMode : int32_t
+{
+    PICK_TOLERANCE_MODE_WORLD   = 0, // fixed radius in metres
+    PICK_TOLERANCE_MODE_SCREEN  = 1, // radius in screen pixels, grows with the view depth
+    PICK_TOLERANCE_MODE_LARGEST = 2  // the larger of the two
+};
+
 enum class TrajectoryCsvLayout : int
 {
     TRAJECTORY_CSV_LAYOUT_UNKNOWN            = 0,

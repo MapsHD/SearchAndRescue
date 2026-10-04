@@ -467,8 +467,21 @@ namespace
 
         float radius_at_depth(const float depth) const
         {
-            const float screen_radius = tolerance.radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : std::max(depth, 0.0f));
-            return std::max(tolerance.radius_m, screen_radius);
+            switch (tolerance.mode)
+            {
+            case PickToleranceMode::PICK_TOLERANCE_MODE_WORLD:
+                return tolerance.radius_m;
+            case PickToleranceMode::PICK_TOLERANCE_MODE_SCREEN:
+                return screen_radius_at_depth(depth);
+            case PickToleranceMode::PICK_TOLERANCE_MODE_LARGEST:
+                break;
+            }
+            return std::max(tolerance.radius_m, screen_radius_at_depth(depth));
+        }
+
+        float screen_radius_at_depth(const float depth) const
+        {
+            return tolerance.radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : std::max(depth, 0.0f));
         }
 
         // A position is pickable when it is in front of a perspective ray origin, between the camera near / far

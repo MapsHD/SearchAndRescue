@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Core/Enums.h>
+#include <Core/Structures.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -58,6 +59,18 @@ struct UserSettings
     {
         bool draw_enable = true;
     } measurements;
+
+    struct
+    {
+        // Alt + LMB / RMB
+        PointPickTolerance trajectory = {PickToleranceMode::PICK_TOLERANCE_MODE_WORLD, 0.25f, 4.0f};
+
+        // Ctrl + RMB
+        PointPickTolerance point_snap = {PickToleranceMode::PICK_TOLERANCE_MODE_WORLD, 0.025f, 4.0f};
+
+        // Shift + LMB
+        PointPickTolerance measurement = {PickToleranceMode::PICK_TOLERANCE_MODE_LARGEST, 0.025f, 4.0f};
+    } picking;
 
     struct
     {
