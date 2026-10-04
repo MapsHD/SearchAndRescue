@@ -835,44 +835,17 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                     if (alt)
                     {
-                        // Pick closest trajectory point to the cast ray (within 0.25 m of the ray)
-                        const float TRAJECTORY_PICK_RADIUS = 0.25f;
+                        // Trajectory poses are sparse, use a larger tolerance than for point cloud points
+                        PointPickTolerance tolerance{};
+                        tolerance.radius_m = 0.025f;
 
-                        uint32_t best_index = 0;
-                        float    best_dist  = TRAJECTORY_PICK_RADIUS;
-                        float    best_t     = std::numeric_limits<float>::max();
-                        bool     found      = false;
+                        const std::optional<size_t> picked_index = pick_trajectory_point_along_ray(_project_data.trajectory_positions, pick_cam, ray_origin, ray_dir, tolerance);
 
-                        for (size_t i = 0; i < _project_data.trajectory_positions.size(); ++i)
+                        if (picked_index)
                         {
-                            const glm::vec3 to_point = _project_data.trajectory_positions[i].position - ray_origin;
-                            const float     t        = glm::dot(to_point, ray_dir);
+                            const uint32_t best_index = static_cast<uint32_t>(*picked_index);
 
-                            if (t <= 0.0f)
-                            {
-                                continue;
-                            }
-
-                            const float d = glm::length(to_point - t * ray_dir);
-
-                            if (d > TRAJECTORY_PICK_RADIUS)
-                            {
-                                continue;
-                            }
-
-                            // Prefer smallest distance to ray, then the point closest to the camera
-                            if (!found || d < best_dist - 1e-4f || (d < best_dist + 1e-4f && t < best_t))
-                            {
-                                found      = true;
-                                best_dist  = d;
-                                best_t     = t;
-                                best_index = static_cast<uint32_t>(i);
-                            }
-                        }
-
-                        if (found)
-                        {
-                            spdlog::info("Trajectory pick in viewport {} : index = [{}] (distance to ray {:.3f} m)", pick_idx, best_index, best_dist);
+                            spdlog::info("Trajectory pick in viewport {} : index = [{}]", pick_idx, best_index);
 
                             if (new_right_click)
                             {
@@ -885,12 +858,13 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         }
                         else
                         {
-                            spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", TRAJECTORY_PICK_RADIUS);
+                            spdlog::warn("Trajectory picking missed ... (no trajectory point within {:.2f} m of ray)", tolerance.radius_m);
                         }
                     }
                     else if (ctrl)
                     {
-                        const PointPickTolerance tolerance{};
+                        PointPickTolerance tolerance{};
+                        tolerance.radius_m = 0.025f;
 
                         const std::optional<glm::vec3> picked_point = pick_point_along_ray(_project_data.buckets, pick_cam, ray_origin, ray_dir, tolerance);
 
@@ -1042,7 +1016,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                             }
                             else
                             {
-                                spdlog::warn("Measurement capacity reached ({} entries) – clear some before adding more", ProjectData::MEASUREMENT_LINE_CAPACITY);
+                                spdlog::warn("Measurement capacity reached ({} entries) - clear some before adding more", ProjectData::MEASUREMENT_LINE_CAPACITY);
                             }
 
                             ms.pending_point.reset();

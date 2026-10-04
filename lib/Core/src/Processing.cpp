@@ -433,6 +433,78 @@ namespace
         out_t_exit  = t_exit;
         return true;
     }
+
+    // View state and tolerance shared by the ray pick queries
+    struct RayPickFilter
+    {
+        const Camera&             camera;
+        const PointPickTolerance& tolerance;
+
+        // Depth is measured along the camera forward axis from the camera position, the same way the near / far
+        // planes clip what is rendered. It must not be the distance along the ray : for a perspective camera an
+        // off-centre ray is longer than the view depth, so visible points close to the far plane would be rejected
+        // near the viewport edges (this shows up in the narrow near / far slab of the locked axis viewports).
+        // For an orthographic camera both are identical, the ray origin only shifts perpendicular to the forward axis.
+        bool      is_ortho;
+        glm::vec3 view_forward;
+
+        // World units per screen pixel : proportional to the depth for perspective, constant for orthographic
+        float world_per_pixel_at_unit_depth;
+
+        RayPickFilter(const Camera& in_camera, const PointPickTolerance& in_tolerance)
+            : camera(in_camera),
+              tolerance(in_tolerance),
+              is_ortho(in_camera.projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC),
+              view_forward(glm::normalize(in_camera.target - in_camera.position)),
+              world_per_pixel_at_unit_depth(in_camera.world_units_per_pixel(1.0f))
+        {
+        }
+
+        float depth_of(const glm::vec3& position) const
+        {
+            return glm::dot(position - camera.position, view_forward);
+        }
+
+        float radius_at_depth(const float depth) const
+        {
+            const float screen_radius = tolerance.radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : std::max(depth, 0.0f));
+            return std::max(tolerance.radius_m, screen_radius);
+        }
+
+        // A position is pickable when it is in front of a perspective ray origin, between the camera near / far
+        // planes and within the tolerance of the ray. Positions further along the ray than max_t are skipped.
+        // out_t is the distance along the ray, out_distance the perpendicular distance to the ray.
+        bool test(const glm::vec3& position, const glm::vec3& ray_origin, const glm::vec3& ray_direction, const float max_t, float& out_t, float& out_distance) const
+        {
+            const glm::vec3 to_point = position - ray_origin;
+            const float     t        = glm::dot(to_point, ray_direction);
+
+            if (t >= max_t || (!is_ortho && t <= 0.0f))
+            {
+                return false;
+            }
+
+            const float depth = depth_of(position);
+
+            if (depth < camera.near_plane || depth > camera.far_plane)
+            {
+                return false;
+            }
+
+            const float     radius  = radius_at_depth(depth);
+            const glm::vec3 off_ray = to_point - t * ray_direction;
+            const float     dist_sq = glm::dot(off_ray, off_ray);
+
+            if (dist_sq > radius * radius)
+            {
+                return false;
+            }
+
+            out_t        = t;
+            out_distance = std::sqrt(dist_sq);
+            return true;
+        }
+    };
 } // namespace
 
 std::optional<glm::vec3> pick_point_along_ray(
@@ -442,23 +514,8 @@ std::optional<glm::vec3> pick_point_along_ray(
     const glm::vec3&          ray_direction,
     const PointPickTolerance& tolerance)
 {
-    // Depth is measured along the camera forward axis from the camera position, the same way the near / far
-    // planes clip what is rendered. It must not be the distance along the ray : for a perspective camera an
-    // off-centre ray is longer than the view depth, so visible points close to the far plane would be rejected
-    // near the viewport edges (this shows up in the narrow near / far slab of the locked axis viewports).
-    // For an orthographic camera both are identical, the ray origin only shifts perpendicular to the forward axis.
-    const bool      is_ortho     = camera.projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC;
-    const glm::vec3 view_forward = glm::normalize(camera.target - camera.position);
-    const glm::vec3 abs_forward  = glm::abs(view_forward);
-
-    // World units per screen pixel : proportional to the depth for perspective, constant for orthographic
-    const float world_per_pixel_at_unit_depth = camera.world_units_per_pixel(1.0f);
-
-    const auto radius_at_depth = [&](const float depth)
-    {
-        const float screen_radius = tolerance.radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : std::max(depth, 0.0f));
-        return std::max(tolerance.radius_m, screen_radius);
-    };
+    const RayPickFilter filter(camera, tolerance);
+    const glm::vec3     abs_forward = glm::abs(filter.view_forward);
 
     struct BucketCandidate
     {
@@ -478,11 +535,11 @@ std::optional<glm::vec3> pick_point_along_ray(
 
         const glm::vec3 center       = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
         const glm::vec3 half_extent  = (bucket.aabb.max - bucket.aabb.min) * 0.5f;
-        const float     center_depth = glm::dot(center - camera.position, view_forward);
+        const float     center_depth = filter.depth_of(center);
         const float     reach        = glm::dot(abs_forward, half_extent);
 
         // The ray may hit a point of the bucket without crossing its box, grow the box by the pick radius
-        const float margin = radius_at_depth(center_depth + reach);
+        const float margin = filter.radius_at_depth(center_depth + reach);
 
         // Everything outside the near / far planes is not rendered, so it is not pickable either
         if (center_depth + reach + margin < camera.near_plane || center_depth - reach - margin > camera.far_plane)
@@ -499,7 +556,7 @@ std::optional<glm::vec3> pick_point_along_ray(
 
         // A perspective ray starts at the camera, a box that ends before the ray origin is behind the camera.
         // An orthographic ray origin sits on the camera plane, the box may legitimately lie behind it.
-        if (!is_ortho && t_exit < 0.0f)
+        if (!filter.is_ortho && t_exit < 0.0f)
         {
             continue;
         }
@@ -527,33 +584,50 @@ std::optional<glm::vec3> pick_point_along_ray(
         {
             for (const PointIntensity& p : lod->points)
             {
-                const glm::vec3 to_point = p.position - ray_origin;
-                const float     t        = glm::dot(to_point, ray_direction);
-
-                if (t >= best_t || (!is_ortho && t <= 0.0f))
+                float t        = 0.0f;
+                float distance = 0.0f;
+                if (filter.test(p.position, ray_origin, ray_direction, best_t, t, distance))
                 {
-                    continue;
+                    best_point = p.position;
+                    best_t     = t;
                 }
-
-                const float depth = glm::dot(p.position - camera.position, view_forward);
-
-                if (depth < camera.near_plane || depth > camera.far_plane)
-                {
-                    continue;
-                }
-
-                const float     radius  = radius_at_depth(depth);
-                const glm::vec3 off_ray = to_point - t * ray_direction;
-                if (glm::dot(off_ray, off_ray) > radius * radius)
-                {
-                    continue;
-                }
-
-                best_point = p.position;
-                best_t     = t;
             }
         }
     }
 
     return best_point;
+}
+
+std::optional<size_t> pick_trajectory_point_along_ray(
+    const std::vector<Point>& trajectory,
+    const Camera&             camera,
+    const glm::vec3&          ray_origin,
+    const glm::vec3&          ray_direction,
+    const PointPickTolerance& tolerance)
+{
+    const RayPickFilter filter(camera, tolerance);
+
+    std::optional<size_t> best_index{};
+    float                 best_distance = std::numeric_limits<float>::max();
+    float                 best_t        = std::numeric_limits<float>::max();
+
+    for (size_t i = 0; i < trajectory.size(); ++i)
+    {
+        float t        = 0.0f;
+        float distance = 0.0f;
+        if (!filter.test(trajectory[i].position, ray_origin, ray_direction, std::numeric_limits<float>::max(), t, distance))
+        {
+            continue;
+        }
+
+        // Trajectory poses are sparse, prefer the one closest to the ray, then the one closest to the camera
+        if (!best_index || distance < best_distance - 1e-4f || (distance < best_distance + 1e-4f && t < best_t))
+        {
+            best_index    = i;
+            best_distance = distance;
+            best_t        = t;
+        }
+    }
+
+    return best_index;
 }

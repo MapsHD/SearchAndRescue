@@ -57,3 +57,13 @@ std::optional<glm::vec3> pick_point_along_ray(
     const glm::vec3&          ray_origin,
     const glm::vec3&          ray_direction,
     const PointPickTolerance& tolerance = {});
+
+// Same query for the trajectory : picks the trajectory point under the ray and returns its index.
+// The same near / far rejection and tolerance apply, but trajectory points are sparse, so the point closest to the
+// ray wins (the one closest to the camera among equals) instead of the one closest to the camera.
+std::optional<size_t> pick_trajectory_point_along_ray(
+    const std::vector<Point>& trajectory,
+    const Camera&             camera,
+    const glm::vec3&          ray_origin,
+    const glm::vec3&          ray_direction,
+    const PointPickTolerance& tolerance = {});
