@@ -412,11 +412,11 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
         // Shift + S : toggle continuous snap of viewport 0 camera target to the current trajectory pose
         const bool shift_s_clicked = shift && s_key && !shift_s_prev;
-        shift_s_prev               = shift && s_key;
 
         s_prev       = s_key;
         mouse_l_prev = mouse_l;
         mouse_r_prev = mouse_r;
+        shift_s_prev = shift && s_key;
 
         int32_t width  = 0;
         int32_t height = 0;
@@ -425,6 +425,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
         int32_t framebuffer_width  = 0;
         int32_t framebuffer_height = 0;
         glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
+
+        double mouse_x = 0.0;
+        double mouse_y = 0.0;
+        glfwGetCursorPos(window, &mouse_x, &mouse_y);
 
         if (width <= 0 || height <= 0 || framebuffer_width <= 0 || framebuffer_height <= 0)
         {
@@ -814,9 +818,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
             if (new_click && !ImGui::GetIO().WantCaptureMouse)
             {
-                double mouse_x, mouse_y;
-                glfwGetCursorPos(window, &mouse_x, &mouse_y);
-
                 int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
                 if (pick_idx >= 0)
                 {
@@ -951,9 +952,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
         {
             if (new_left_click && shift && !ImGui::GetIO().WantCaptureMouse)
             {
-                double mouse_x, mouse_y;
-                glfwGetCursorPos(window, &mouse_x, &mouse_y);
-
                 int pick_idx = ctx.camera_index_at(mouse_x, mouse_y);
                 if (pick_idx >= 0 && !_user_settings.measurements.draw_enable)
                 {
