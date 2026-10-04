@@ -498,19 +498,22 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         ImGui::EndMenu();
                     }
 
-                    // Right-aligned info tooltips: Authors | Shortcuts | Configuration
+                    // Right-aligned info tooltips: FPS | Authors | Shortcuts | Configuration
                     // Each label is separated by 20 px; the group sits 20 px from the right edge.
                     {
                         static constexpr float TOOLTIP_GAP    = 20.0f;
                         static constexpr float TOOLTIP_MARGIN = 20.0f;
 
+                        const float fps_width           = ImGui::CalcTextSize("FPS : %3.2f").x;
                         const float authors_width       = ImGui::CalcTextSize("Authors").x;
                         const float shortcuts_width     = ImGui::CalcTextSize("Shortcuts").x;
                         const float configuration_width = ImGui::CalcTextSize("Configuration").x;
 
-                        const float total_width = authors_width + TOOLTIP_GAP + shortcuts_width + TOOLTIP_GAP + configuration_width + TOOLTIP_MARGIN;
+                        const float total_width = fps_width + TOOLTIP_GAP + authors_width + TOOLTIP_GAP + shortcuts_width + TOOLTIP_GAP + configuration_width + TOOLTIP_MARGIN;
 
                         ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - total_width);
+
+                        ImGui::Text("FPS : %3.2f", ImGui::GetIO().Framerate);
 
                         ImGui::Text("Authors");
                         if (ImGui::BeginItemTooltip())

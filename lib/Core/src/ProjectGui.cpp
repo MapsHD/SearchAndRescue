@@ -303,7 +303,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 const uint32_t zero                  = 0U;
                 const uint32_t max_orientation_index = static_cast<uint32_t>(project_data.trajectory_orientations_mat33.size()) - 1U;
 
-                ImGui::Text("Trajectory : %zu / %zu = %.2f%", static_cast<size_t>(project_data.trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(project_data.trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
+                ImGui::Text("Trajectory : %zu / %zu = %.2f%%", static_cast<size_t>(project_data.trajectory_index), static_cast<size_t>(max_orientation_index), static_cast<float>(project_data.trajectory_index) / static_cast<float>(max_orientation_index) * 100.0f);
 
                 ImGui::Separator();
                 ImGui::Checkbox("Auto Play", &project_data.trajectory_index_auto_play);
