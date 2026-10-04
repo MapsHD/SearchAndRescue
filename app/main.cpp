@@ -1381,21 +1381,35 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
                 ImU32       col = IM_COL32(180, 180, 180, 200);
 
-                // Vertical center line for modes 2 and 4
-                dl->AddLine(
-                    ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
-                    ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
-                    col,
-                    1.0f);
-
-                // Horizontal center line for mode 4 only
-                if (vp_count == 4)
+                if (vp_count == 4 && ctx.layout == ViewportLayout::VIEWPORT_LAYOUT_ONE_BIG)
                 {
+                    // Vertical line at the 2/3 boundary separating the large viewport from the three stacked ones
+                    const float split_x = static_cast<float>(ctx.viewport_for(0).w);
+                    dl->AddLine(ImVec2(split_x, 0.0f), ImVec2(split_x, static_cast<float>(height)), col, 1.0f);
+
+                    // Horizontal lines separating the three stacked viewports on the right
+                    const float third = static_cast<float>(height) / 3.0f;
+                    dl->AddLine(ImVec2(split_x, third), ImVec2(static_cast<float>(width), third), col, 1.0f);
+                    dl->AddLine(ImVec2(split_x, third * 2.0f), ImVec2(static_cast<float>(width), third * 2.0f), col, 1.0f);
+                }
+                else
+                {
+                    // Vertical center line for modes 2 and 4
                     dl->AddLine(
-                        ImVec2(0.0f, static_cast<float>(height) * 0.5f),
-                        ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                        ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
+                        ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
                         col,
                         1.0f);
+
+                    // Horizontal center line for mode 4 only
+                    if (vp_count == 4)
+                    {
+                        dl->AddLine(
+                            ImVec2(0.0f, static_cast<float>(height) * 0.5f),
+                            ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                            col,
+                            1.0f);
+                    }
                 }
             }
         }

@@ -109,6 +109,12 @@ struct MultiViewContext
 
     ViewportCount active_count{ViewportCount::VIEWPORT_COUNT_ONE};
 
+    // Layout used when active_count == 4 : 2x2 grid or 1 large viewport + 3 stacked on the right
+    ViewportLayout layout{ViewportLayout::VIEWPORT_LAYOUT_GRID};
+
+    // Large-viewport layout : fraction of the window width taken by the large viewport (0.5 .. 0.75, default 2/3)
+    float large_viewport_fraction{2.0f / 3.0f};
+
     // Level of detail : fixed LOD index vs automatic LOD from distance (per viewport / camera)
 
     bool use_fixed_lod[MAX_CAMERAS]{

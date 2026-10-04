@@ -33,6 +33,13 @@ enum class ViewportCount : int
     VIEWPORT_COUNT_FOUR = 4
 };
 
+// Layout of the four-viewport mode
+enum class ViewportLayout : int
+{
+    VIEWPORT_LAYOUT_GRID    = 0, // 2x2 grid of equal viewports
+    VIEWPORT_LAYOUT_ONE_BIG = 1  // 1 large viewport (number ONE - hence ONE BIG ...) (2/3 width default) + 3 stacked on the right
+};
+
 enum class PointCloudDisplayMode : int32_t
 {
     POINT_CLOUD_DISPLAY_MODE_INTENSITY                          = 0,
