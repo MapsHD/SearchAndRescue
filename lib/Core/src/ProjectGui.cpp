@@ -120,7 +120,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(160.0f);
                     float fraction = ctx.large_viewport_fraction;
-                    if (ImGui::SliderFloat("##large_viewport_fraction", &fraction, 0.5f, 0.75f, "large : %.2f", ImGuiSliderFlags_AlwaysClamp))
+                    if (ImGui::SliderFloat("##large_viewport_fraction", &fraction, 0.5f, 0.75f, "large : %.3f", ImGuiSliderFlags_AlwaysClamp))
                     {
                         ctx.large_viewport_fraction = fraction;
                     }

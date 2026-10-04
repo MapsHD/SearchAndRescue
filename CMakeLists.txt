@@ -26,9 +26,10 @@ add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR=${PROJECT_VERS
 add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR=${PROJECT_VERSION_MINOR})
 add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
+# add_compile_definitions(GLM_FORCE_XYZW_ONLY)
+
 add_compile_definitions(GLM_FORCE_RIGHT_HANDED)
 add_compile_definitions(GLM_FORCE_RADIANS)
-add_compile_definitions(GLM_FORCE_XYZW_ONLY)
 add_compile_definitions(GLM_FORCE_QUAT_DATA_XYZW)
 add_compile_definitions(GLM_FORCE_QUAT_CTOR_XYZW)
 

@@ -4,9 +4,11 @@
 #include <GLFW/glfw3.h>
 // clang-format on
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/color_space.hpp>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -17,6 +19,7 @@
 #include <implot.h>
 
 #include <memory>
+#include <random>
 
 #include <Core/Camera.h>
 #include <Core/Debug.h>
@@ -134,6 +137,11 @@ static std::string describe_pick_tolerance(const PointPickTolerance& tolerance)
     }
     return fmt::format("the larger of {:.3f} m and {:.1f} px", tolerance.radius_m, tolerance.radius_px);
 }
+
+// Random hue generator for per-measurement bright colours
+static std::random_device                    measurement_random_device;
+static std::mt19937                          measurement_random_engine(measurement_random_device());
+static std::uniform_real_distribution<float> hue_distribution(0.0f, 1.0f);
 
 static WindowContext* get_window_context(GLFWwindow* window)
 {
@@ -1009,6 +1017,11 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                             entry.point_b    = point;
                             entry.distance_m = glm::length(entry.point_b - entry.point_a);
 
+                            // Random bright colour : HSV with s = v = 1 keeps the line / label vivid
+                            // glm::rgbColor expects the hue in degrees (0-360), not 0-1
+                            const float random_hue = hue_distribution(measurement_random_engine) * 360.0f;
+                            entry.color            = glm::rgbColor(glm::vec3(random_hue, 1.0f, 1.0f));
+
                             if (ms.entries.size() < ProjectData::MEASUREMENT_LINE_CAPACITY)
                             {
                                 ms.entries.push_back(entry);
@@ -1243,10 +1256,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     }
 
                     // Cheap rejection before the LOD traversal : a bucket entirely behind the camera can never be seen
-                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
-                    {
-                        continue;
-                    }
+                    //  if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    //  {
+                    //      continue;
+                    //  }
 
                     glm::vec3 center   = 0.5f * (bucket.aabb.min + bucket.aabb.max);
                     float     distance = glm::length(center - camera_pos);
@@ -1309,10 +1322,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 for (auto& [ID, bucket] : _project_data.buckets)
                 {
                     // Cheap rejection before the frustum test : a bucket entirely behind the camera can never be seen
-                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
-                    {
-                        continue;
-                    }
+                    // if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    // {
+                    //     continue;
+                    // }
 
                     if (!record_in_camera_frustum(bucket, frustum))
                     {

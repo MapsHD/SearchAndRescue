@@ -174,13 +174,13 @@ Viewport MultiViewContext::viewport_for(int i) const
             // 1 = top right, 2 = middle right, 3 = bottom right
             const float fraction = std::clamp(large_viewport_fraction, 0.25f, 0.9f);
             int         lw       = static_cast<int>(window_width * fraction); // large viewport width
-            int sw = window_width - lw;             // small viewport width
-            int sh = window_height / 3;             // small viewport height
+            int         sw       = window_width - lw;                         // small viewport width
+            int         sh       = window_height / 3;                         // small viewport height
             if (i == 0)
             {
                 return {0, 0, lw, window_height};
             }
-            return {lw, (3 - i) * sh, sw, sh};      // i = 1 -> top, 2 -> middle, 3 -> bottom
+            return {lw, (3 - i) * sh, sw, sh}; // i = 1 -> top, 2 -> middle, 3 -> bottom
         }
         // Slots: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right
         // OpenGL origin is bottom-left, so top row lives at y = hh
