@@ -14,6 +14,7 @@
 #include <Core/PFDWrapper.h>
 #include <Core/Processing.h>
 #include <Core/Project.h>
+#include <Core/Version.h>
 
 // Free all OpenGL resources owned by the project data
 void free_project_data(ProjectData& project_data)
@@ -581,7 +582,7 @@ void move_trajectory_index_by_distance(const std::vector<Point>& trajectory, uin
 bool ProjectSaveJSON(const std::filesystem::path& path, const ProjectData& project_data)
 {
     const nlohmann::json doc = {
-        {"version", 1},
+        {"version", application_version()},
         {"trajectory", project_data.trajectory_path},
         {"object", project_data.object_path},
         {"environment", project_data.environment_path},
@@ -631,6 +632,25 @@ bool ProjectLoadJSON(const std::filesystem::path& path, ProjectData& project_dat
             return it->get<std::string>();
         return {};
     };
+
+    // Version check : warn when the project was saved with a different application version
+    {
+        const auto it = doc.find("version");
+        if (it == doc.end() || !it->is_string())
+        {
+            spdlog::warn("ProjectLoadJSON : '{}' has no version string (saved by an older application)", path.string());
+        }
+        else
+        {
+            const std::string file_version = it->get<std::string>();
+            const std::string current      = application_version();
+            if (file_version != current)
+            {
+                spdlog::warn("ProjectLoadJSON : project version '{}' does not match current application version '{}'",
+                             file_version, current);
+            }
+        }
+    }
 
     const std::string trajectory_path  = ReadPath("trajectory");
     const std::string object_path      = ReadPath("object");

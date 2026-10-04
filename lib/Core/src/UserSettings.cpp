@@ -1,5 +1,6 @@
 #include <Core/PFDWrapper.h>
 #include <Core/UserSettings.h>
+#include <Core/Version.h>
 
 #include <imgui.h>
 
@@ -322,6 +323,7 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
 bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings& user_settings)
 {
     const nlohmann::json settings = {
+        {"version", application_version()},
         {"opengl",
          {{"clear_color", Vec3ToJSON(user_settings.opengl.clear_color)}}},
         {"io",
@@ -395,6 +397,28 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     const json settings = json::parse(file, nullptr, false);
     if (settings.is_discarded() || file.bad())
         return false;
+
+    // Version check : a settings file saved by a different application version is
+    // rejected entirely and the caller keeps the defaults.
+    {
+        const auto it = settings.find("version");
+        if (it == settings.end() || !it->is_string())
+        {
+            spdlog::error("UserSettings ({}): settings file has no version string, falling back to default settings",
+                          path.string());
+            return false;
+        }
+
+        const std::string file_version = it->get<std::string>();
+        const std::string current      = application_version();
+        if (file_version != current)
+        {
+            spdlog::error("UserSettings ({}): settings version '{}' does not match current application version '{}', "
+                          "falling back to default settings",
+                          path.string(), file_version, current);
+            return false;
+        }
+    }
 
     const json* opengl       = FindObject(settings, "opengl");
     const json* io           = FindObject(settings, "io");

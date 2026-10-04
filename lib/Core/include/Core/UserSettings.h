@@ -19,7 +19,7 @@ struct UserSettings
     {
         float   map_load_extent                     = 1.0f;
         int32_t map_load_decimation_factor          = 2;
-        int32_t map_load_decimation_levels          = 8;
+        int32_t map_load_decimation_levels          = 4;
         int32_t map_load_minimum_first_level_points = 250;
         bool    map_load_use_center_extent          = true;
         int32_t trajectory_load_every_nth           = 1;
