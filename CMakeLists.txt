@@ -1,20 +1,31 @@
 cmake_minimum_required(VERSION 3.20.0 FATAL_ERROR)
 
-project(cave-traversal-tool VERSION 1.0.3)
-
-# Project version : exposed to C++ as CAVE_TRAVERSAL_TOOL_VERSION_MAJOR / _MINOR / _PATCH defines
-add_compile_definitions(
-    CAVE_TRAVERSAL_TOOL_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
-    CAVE_TRAVERSAL_TOOL_VERSION_MINOR=${PROJECT_VERSION_MINOR}
-    CAVE_TRAVERSAL_TOOL_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+project(HDMapping-SearchAndRescue VERSION 1.0.6)
 
 set(CMAKE_CXX_STANDARD            23)
 set(CMAKE_CXX_STANDARD_REQUIRED   ON)
 set(CMAKE_CXX_EXTENSIONS          OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_definitions(GLM_FORCE_DEPTH_ZERO_TO_ONE)
-add_compile_definitions(GLM_FORCE_Z_CLIP_CONTROL)
+if(APPLE)
+    add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1=1)
+else()
+    add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1=0)
+endif()
+
+if(APPLE)
+    add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=1)
+else()
+    add_compile_definitions(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410=0)
+endif()
+
+set(REPOSITORY_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+set(EXTERNAL_DIRECTORY ${REPOSITORY_DIRECTORY}/external)
+ 
+add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR=${PROJECT_VERSION_MAJOR})
+add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR=${PROJECT_VERSION_MINOR})
+add_compile_definitions(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH=${PROJECT_VERSION_PATCH})
+
 add_compile_definitions(GLM_FORCE_RIGHT_HANDED)
 add_compile_definitions(GLM_FORCE_RADIANS)
 add_compile_definitions(GLM_FORCE_XYZW_ONLY)
@@ -31,88 +42,31 @@ if (MSVC)
   add_compile_options(/utf-8)
 endif()
 
-set(GLFW_BUILD_WAYLAND   OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_X11       ON  CACHE BOOL "" FORCE)
-set(GLFW_BUILD_DOCS      OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES  OFF CACHE BOOL "" FORCE)
+set(GLFW_USE_HYBRID_HPG    ON CACHE BOOL "" FORCE)
+set(GLFW_BUILD_WAYLAND     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_X11         ON  CACHE BOOL "" FORCE)
+set(GLFW_BUILD_DOCS        OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS       OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES    OFF CACHE BOOL "" FORCE)
 
-set(SPDLOG_HEADER_ONLY   ON  CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_SHARED  OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_TESTS   OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_BENCH   OFF CACHE BOOL "" FORCE)
-set(SPDLOG_BUILD_EXAMPLE OFF CACHE BOOL "" FORCE)
+set(SPDLOG_HEADER_ONLY     OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_SHARED    OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_BENCH     OFF CACHE BOOL "" FORCE)
+set(SPDLOG_BUILD_EXAMPLE   OFF CACHE BOOL "" FORCE)
 
-set(LASZIP_BUILD_STATIC  ON  CACHE BOOL "" FORCE)
+set(LASZIP_BUILD_STATIC    ON  CACHE BOOL "" FORCE)
 
-add_subdirectory(external/glfw)
-add_subdirectory(external/spdlog)
-add_subdirectory(external/LASzip)
+include(${REPOSITORY_DIRECTORY}/cmake/configure.cmake)
 
-add_executable(cave-traversal-tool main.cpp)
+include(${REPOSITORY_DIRECTORY}/cmake/glad.cmake)
+include(${REPOSITORY_DIRECTORY}/cmake/imgui.cmake)
+include(${REPOSITORY_DIRECTORY}/cmake/imguizmo.cmake)
+include(${REPOSITORY_DIRECTORY}/cmake/implot.cmake)
 
-target_sources(cave-traversal-tool
-    PRIVATE
-        external/glad/src/glad.c
-        src/Buffer.cpp
-        src/Camera.cpp
-        src/Debug.cpp
-        src/ErrorCallbacks.cpp
-        src/FileIO.cpp
-        src/PFDWrapper.cpp
-        src/Processing.cpp
-        src/Project.cpp
-        src/ProjectGui.cpp
-        src/Program.cpp
-        src/UserSettings.cpp
-        src/VertexArray.cpp
-        src/Shaders.cpp
-    PRIVATE
-        external/glad/src/glad.c
-        external/imgui/imgui_demo.cpp
-        external/imgui/imgui_draw.cpp
-        external/imgui/imgui_tables.cpp
-        external/imgui/imgui_widgets.cpp
-        external/imgui/imgui.cpp
-        external/imgui/backends/imgui_impl_glfw.cpp
-        external/imgui/backends/imgui_impl_opengl3.cpp
-        external/ImGuizmo/src/GraphEditor.cpp
-        external/ImGuizmo/src/ImCurveEdit.cpp
-        external/ImGuizmo/src/ImGradient.cpp
-        external/ImGuizmo/src/ImGuizmo.cpp
-        external/ImGuizmo/src/ImSequencer.cpp)
+add_subdirectory(${EXTERNAL_DIRECTORY}/glfw)
+add_subdirectory(${EXTERNAL_DIRECTORY}/spdlog)
+add_subdirectory(${EXTERNAL_DIRECTORY}/LASzip)
 
-target_link_libraries(cave-traversal-tool
-    PRIVATE
-        glfw)
-
-if(WIN32)
-    target_link_libraries(cave-traversal-tool
-        PRIVATE
-            laszip3
-            laszip_api3
-    )
-else()
-    target_link_libraries(cave-traversal-tool
-        PRIVATE
-            laszip
-            laszip_api
-    )
-endif()
-
-target_include_directories(cave-traversal-tool
-    PRIVATE
-        include
-    PRIVATE
-        external/glm
-        external/json/include
-        external/glfw/include
-        external/glad/include
-        external/spdlog/include
-        external/imgui
-        external/imgui/backends
-        external/ImGuizmo/src
-        external/portable-file-dialogs
-        external/happly
-        external/LASzip/include/laszip
-        external/LASzip/dll)
+add_subdirectory(lib/Core)
+add_subdirectory(app)
