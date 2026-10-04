@@ -1255,11 +1255,11 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         continue;
                     }
 
-                    // Cheap rejection before the LOD traversal : a bucket entirely behind the camera can never be seen
-                    //  if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
-                    //  {
-                    //      continue;
-                    //  }
+                    // Cheap rejection before the LOD traversal : discard buckets entirely behind the near plane
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4]))
+                    {
+                        continue;
+                    }
 
                     glm::vec3 center   = 0.5f * (bucket.aabb.min + bucket.aabb.max);
                     float     distance = glm::length(center - camera_pos);
@@ -1314,18 +1314,16 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             // POINT CLOUD BOXES
             if (_user_settings.point_cloud.draw_enable_bbox && _project_data.buckets.size() && (draw_any_cave_boxes))
             {
-                glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
-
                 bounding_box_program->Bind();
                 bounding_box_program->PushUniform16F32("u_MVP", MVP);
 
                 for (auto& [ID, bucket] : _project_data.buckets)
                 {
-                    // Cheap rejection before the frustum test : a bucket entirely behind the camera can never be seen
-                    // if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
-                    // {
-                    //     continue;
-                    // }
+                    // Cheap rejection before the frustum test : discard buckets entirely behind the near plane
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4]))
+                    {
+                        continue;
+                    }
 
                     if (!record_in_camera_frustum(bucket, frustum))
                     {
