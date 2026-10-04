@@ -34,6 +34,12 @@ bool lod_in_camera_frustum(const PointCloudLOD& lod, const std::array<glm::vec4,
 
 bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<glm::vec4, 6>& planes);
 
+// Cheap rejection test run before the frustum / LOD traversal : returns false when the whole
+// bucket AABB lies in the half-space behind the camera's near plane, so it can never contribute
+// to the image. For a perspective camera this discards everything behind the apex (where the
+// frustum planes degenerate), for an orthographic camera everything behind the near slab.
+bool bucket_in_front_of_camera(const AABB& aabb, const glm::vec4& near_plane, const glm::vec3& camera_pos);
+
 // Picks the point cloud point under the ray cast from the camera (see Camera::screen_ray).
 //
 // Buckets outside the camera near / far planes (this includes everything behind a perspective camera) are

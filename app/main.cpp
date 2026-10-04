@@ -560,7 +560,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                                 ImGui::TextUnformatted(description);
                             };
 
-                            ImGui::TextUnformatted("Movement [Windows shortcuts]");
+                            ImGui::TextUnformatted("Movement");
                             if (ImGui::BeginTable("##shortcuts_movement", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                             {
                                 ImGui::TableSetupColumn("ID");
@@ -580,7 +580,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                             ImGui::Spacing();
 
-                            ImGui::TextUnformatted("Processing [Windows shortcuts]");
+                            ImGui::TextUnformatted("Processing");
                             if (ImGui::BeginTable("##shortcuts_processing", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
                             {
                                 ImGui::TableSetupColumn("ID");
@@ -1239,6 +1239,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         continue;
                     }
 
+                    // Cheap rejection before the LOD traversal : a bucket entirely behind the camera can never be seen
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    {
+                        continue;
+                    }
+
                     glm::vec3 center   = 0.5f * (bucket.aabb.min + bucket.aabb.max);
                     float     distance = glm::length(center - camera_pos);
 
@@ -1299,6 +1305,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                 for (auto& [ID, bucket] : _project_data.buckets)
                 {
+                    // Cheap rejection before the frustum test : a bucket entirely behind the camera can never be seen
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    {
+                        continue;
+                    }
+
                     if (!record_in_camera_frustum(bucket, frustum))
                     {
                         continue;
