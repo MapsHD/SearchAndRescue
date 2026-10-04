@@ -167,3 +167,8 @@ void cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 void size_callback(GLFWwindow* window, int32_t width, int32_t height);
+
+void cursor_position_callback(GLFWwindow* window, MultiViewContext& context, double xpos, double ypos);
+void mouse_button_callback(GLFWwindow* window, MultiViewContext& context, int button, int action, int mods);
+void scroll_callback(GLFWwindow* window, MultiViewContext& context, double xoffset, double yoffset);
+void size_callback(GLFWwindow* window, MultiViewContext& context, int32_t width, int32_t height);

@@ -16,6 +16,8 @@
 
 #include <implot.h>
 
+#include <memory>
+
 #include <Core/Camera.h>
 #include <Core/Debug.h>
 #include <Core/ErrorCallbacks.h>
@@ -81,13 +83,97 @@ struct GuiState
     bool display_debug_tab         = false;
 };
 
-static GuiState     _gui_state     = {};
-static UserSettings _user_settings = {};
-static ProjectData  _project_data  = {};
+struct WindowContext
+{
+    ProjectData&  project_data;
+    UserSettings& user_settings;
+};
+
+struct RenderResources
+{
+    std::unique_ptr<Program> origin_program;
+    std::unique_ptr<Program> camera_target_program;
+    std::unique_ptr<Program> point_cloud_program;
+    std::unique_ptr<Program> point_cloud_color_map_program;
+    std::unique_ptr<Program> trajectory_program;
+    std::unique_ptr<Program> trajectory_axes_program;
+    std::unique_ptr<Program> stretcher_program;
+    std::unique_ptr<Program> bounding_box_program;
+    std::unique_ptr<Program> bounding_box_stretcher_program;
+    std::unique_ptr<Program> colored_line_program;
+
+    std::unique_ptr<Buffer>      origin_buffer;
+    std::unique_ptr<Buffer>      target_buffer;
+    std::unique_ptr<VertexArray> origin_vao;
+    std::unique_ptr<VertexArray> target_vao;
+};
+
+struct ApplicationResources
+{
+    GLFWwindow*    window                   = nullptr;
+    ImGuiContext*  imgui_context            = nullptr;
+    ImPlotContext* implot_context           = nullptr;
+    bool           glfw_initialized         = false;
+    bool           opengl_initialized       = false;
+    bool           imgui_glfw_initialized   = false;
+    bool           imgui_opengl_initialized = false;
+
+    std::unique_ptr<RenderResources> render_resources;
+};
+
+static WindowContext* get_window_context(GLFWwindow* window)
+{
+    auto* context = static_cast<WindowContext*>(glfwGetWindowUserPointer(window));
+    if (!context)
+    {
+        spdlog::error("Window callback invoked without an application context");
+    }
+    return context;
+}
+
+static void window_cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    if (auto* context = get_window_context(window))
+    {
+        cursor_position_callback(window, context->project_data.multi_view, xpos, ypos);
+    }
+}
+
+static void window_mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (auto* context = get_window_context(window))
+    {
+        mouse_button_callback(window, context->project_data.multi_view, button, action, mods);
+    }
+}
+
+static void window_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    if (auto* context = get_window_context(window))
+    {
+        scroll_callback(window, context->project_data.multi_view, xoffset, yoffset);
+    }
+}
+
+static void window_size_callback(GLFWwindow* window, int32_t width, int32_t height)
+{
+    if (auto* context = get_window_context(window))
+    {
+        size_callback(window, context->project_data.multi_view, width, height);
+    }
+}
 
 // GLFW drop callback : route each dropped file to the appropriate loader based on its extension
-static void drop_callback(GLFWwindow*, int count, const char** paths)
+static void drop_callback(GLFWwindow* window, int count, const char** paths)
 {
+    auto* context = get_window_context(window);
+    if (!context)
+    {
+        return;
+    }
+    ProjectData&  _project_data  = context->project_data;
+    UserSettings& _user_settings = context->user_settings;
+
     for (int i = 0; i < count; ++i)
     {
         std::filesystem::path path(paths[i]);
@@ -133,8 +219,10 @@ static void drop_callback(GLFWwindow*, int count, const char** paths)
     }
 }
 
-int main()
+static bool initialize(ApplicationResources& runtime, WindowContext& window_context)
 {
+    ProjectData& _project_data = window_context.project_data;
+
     std::vector<ColorPoint> origin = {
         {{0.0f, 0.0f, 0.0f}, {0xFF, 0x00, 0x00}},
         {{1.0f, 0.0f, 0.0f}, {0xFF, 0x00, 0x00}},
@@ -156,8 +244,9 @@ int main()
     if (!glfwInit())
     {
         spdlog::critical("Failed to initialize GLFW!");
-        return EXIT_FAILURE;
+        return false;
     }
+    runtime.glfw_initialized = true;
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR);
@@ -175,12 +264,19 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_TRUE);
 #endif
 
-    GLFWwindow* window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE, nullptr, nullptr);
+    runtime.window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE, nullptr, nullptr);
+    if (!runtime.window)
+    {
+        spdlog::critical("Failed to create GLFW window!");
+        return false;
+    }
+    GLFWwindow* window = runtime.window;
 
-    glfwSetCursorPosCallback(window, cursor_position_callback);
-    glfwSetMouseButtonCallback(window, mouse_button_callback);
-    glfwSetScrollCallback(window, scroll_callback);
-    glfwSetWindowSizeCallback(window, size_callback);
+    glfwSetWindowUserPointer(window, &window_context);
+    glfwSetCursorPosCallback(window, window_cursor_position_callback);
+    glfwSetMouseButtonCallback(window, window_mouse_button_callback);
+    glfwSetScrollCallback(window, window_scroll_callback);
+    glfwSetWindowSizeCallback(window, window_size_callback);
     glfwSetDropCallback(window, drop_callback);
 
     MultiViewContext& ctx   = _project_data.multi_view;
@@ -196,13 +292,16 @@ int main()
         ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
     }
 
-    glfwSetWindowUserPointer(window, &_project_data.multi_view);
-
     glfwMakeContextCurrent(window);
 
     glfwSwapInterval(1);
 
-    gladLoadGLLoader((GLADloadproc)glfwGetProcAddress);
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
+        spdlog::critical("Failed to load OpenGL functions!");
+        return false;
+    }
+    runtime.opengl_initialized = true;
 
     // glEnable(GL_DEBUG_OUTPUT);
     // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -211,26 +310,31 @@ int main()
     // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
-    Program* origin_program                 = make_program(GetProgramShaderSources_Origin());
-    Program* camera_target_program          = make_program(GetProgramShaderSources_CameraTarger());
-    Program* point_cloud_program            = make_program(GetProgramShaderSources_PointCloud());
-    Program* point_cloud_color_map_program  = make_program(GetProgramShaderSources_PointCloudColorMap());
-    Program* trajectory_program             = make_program(GetProgramShaderSources_Trajectory());
-    Program* trajectory_axes_program        = make_program(GetProgramShaderSources_TrajectoryOrientations());
-    Program* stretcher_program              = make_program(GetProgramShaderSources_Stretcher());
-    Program* bounding_box_program           = make_program(GetProgramShaderSources_BoundingBox());
-    Program* bounding_box_stretcher_program = make_program(GetProgramShaderSources_BoundingBoxStretcher());
-    Program* colored_line_program           = make_program(GetProgramShaderSources_ColoredLine());
+    runtime.render_resources   = std::make_unique<RenderResources>();
+    RenderResources& resources = *runtime.render_resources;
+
+    resources.origin_program.reset(make_program(GetProgramShaderSources_Origin()));
+    resources.camera_target_program.reset(make_program(GetProgramShaderSources_CameraTarger()));
+    resources.point_cloud_program.reset(make_program(GetProgramShaderSources_PointCloud()));
+    resources.point_cloud_color_map_program.reset(make_program(GetProgramShaderSources_PointCloudColorMap()));
+    resources.trajectory_program.reset(make_program(GetProgramShaderSources_Trajectory()));
+    resources.trajectory_axes_program.reset(make_program(GetProgramShaderSources_TrajectoryOrientations()));
+    resources.stretcher_program.reset(make_program(GetProgramShaderSources_Stretcher()));
+    resources.bounding_box_program.reset(make_program(GetProgramShaderSources_BoundingBox()));
+    resources.bounding_box_stretcher_program.reset(make_program(GetProgramShaderSources_BoundingBoxStretcher()));
+    resources.colored_line_program.reset(make_program(GetProgramShaderSources_ColoredLine()));
 
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
     const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
-    Buffer*      origin_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
-    VertexArray* origin_vao    = new VertexArray({{origin_buffer, false, layout_color_point, 0}}, nullptr, false);
+    resources.origin_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
+    resources.origin_vao    = std::make_unique<VertexArray>(
+        std::vector<VertexBufferBinding>{{resources.origin_buffer.get(), false, layout_color_point, 0}}, nullptr, false);
 
-    Buffer*      target_buffer = new Buffer(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
-    VertexArray* target_vao    = new VertexArray({{target_buffer, false, layout_point, 0}}, nullptr, false);
+    resources.target_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
+    resources.target_vao    = std::make_unique<VertexArray>(
+        std::vector<VertexBufferBinding>{{resources.target_buffer.get(), false, layout_point, 0}}, nullptr, false);
 
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
     _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
@@ -241,15 +345,53 @@ int main()
     _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored, 0}}, nullptr, false);
 
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImPlot::CreateContext();
+    runtime.imgui_context  = ImGui::CreateContext();
+    runtime.implot_context = ImPlot::CreateContext();
 
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init();
+    if (!ImGui_ImplGlfw_InitForOpenGL(window, true))
+    {
+        spdlog::critical("Failed to initialize ImGui GLFW backend!");
+        return false;
+    }
+    runtime.imgui_glfw_initialized = true;
+
+    if (!ImGui_ImplOpenGL3_Init())
+    {
+        spdlog::critical("Failed to initialize ImGui OpenGL backend!");
+        return false;
+    }
+    runtime.imgui_opengl_initialized = true;
+    return true;
+}
+
+static void render_loop(const ApplicationResources& runtime, GuiState& _gui_state, UserSettings& _user_settings, ProjectData& _project_data)
+{
+    GLFWwindow*            window    = runtime.window;
+    MultiViewContext&      ctx       = _project_data.multi_view;
+    const RenderResources& resources = *runtime.render_resources;
+
+    Program*     origin_program                 = resources.origin_program.get();
+    Program*     camera_target_program          = resources.camera_target_program.get();
+    Program*     point_cloud_program            = resources.point_cloud_program.get();
+    Program*     point_cloud_color_map_program  = resources.point_cloud_color_map_program.get();
+    Program*     trajectory_program             = resources.trajectory_program.get();
+    Program*     trajectory_axes_program        = resources.trajectory_axes_program.get();
+    Program*     stretcher_program              = resources.stretcher_program.get();
+    Program*     bounding_box_program           = resources.bounding_box_program.get();
+    Program*     bounding_box_stretcher_program = resources.bounding_box_stretcher_program.get();
+    Program*     colored_line_program           = resources.colored_line_program.get();
+    VertexArray* origin_vao                     = resources.origin_vao.get();
+    VertexArray* target_vao                     = resources.target_vao.get();
+
+    bool                       s_prev       = false;
+    bool                       mouse_l_prev = false;
+    bool                       mouse_r_prev = false;
+    bool                       shift_s_prev = false;
+    std::vector<ColoredVertex> meas_verts{};
 
     while (!glfwWindowShouldClose(window))
     {
@@ -264,18 +406,13 @@ int main()
         const bool mouse_l = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
         const bool mouse_r = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
 
-        static bool s_prev       = false;
-        static bool mouse_l_prev = false;
-        static bool mouse_r_prev = false;
-
         const bool s_key_clicked   = s_key && !s_prev;         // one-shot S press
         const bool new_left_click  = mouse_l && !mouse_l_prev; // released -> pressed
         const bool new_right_click = mouse_r && !mouse_r_prev; // released -> pressed
 
         // Shift + S : toggle continuous snap of viewport 0 camera target to the current trajectory pose
-        static bool shift_s_prev    = false;
-        const bool  shift_s_clicked = shift && s_key && !shift_s_prev;
-        shift_s_prev                = shift && s_key;
+        const bool shift_s_clicked = shift && s_key && !shift_s_prev;
+        shift_s_prev               = shift && s_key;
 
         s_prev       = s_key;
         mouse_l_prev = mouse_l;
@@ -305,14 +442,11 @@ int main()
             ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
         }
 
-        glViewport(0, 0, framebuffer_width, framebuffer_height);
-
-        glClearColor(_user_settings.opengl.clear_color.x, _user_settings.opengl.clear_color.y, _user_settings.opengl.clear_color.z, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        // UPDATE : immediate-mode GUI applies input here; draw data is submitted during render.
 
         // GUI viewport
         {
@@ -525,9 +659,6 @@ int main()
             }
         }
 
-        glm::vec3 stretcher_position    = glm::vec3(0.0f);
-        glm::mat3 stretcher_orientation = glm::mat3(1.0f);
-
         if (_project_data.trajectory_index_auto_play && !_project_data.trajectory_orientations_mat33.empty())
         {
             const size_t last = _project_data.trajectory_orientations_mat33.size() - 1;
@@ -543,75 +674,14 @@ int main()
             }
         }
 
-        if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
+        glm::vec3 stretcher_position    = glm::vec3(0.0f);
+        glm::mat3 stretcher_orientation = glm::mat3(1.0f);
+        glm::mat4 stretcher_pose        = glm::mat4(1.0f);
+
+        auto update_stretcher_pose = [&]()
         {
-            const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
-            const auto& trajectoryorientation = _project_data.trajectory_orientations_mat33[_project_data.trajectory_index];
-
-            stretcher_position    = trajectory_point.position;
-            stretcher_orientation = trajectoryorientation.orientation;
-        }
-
-        glm::mat4 stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
-
-        const OBB  stretcher_obb               = aabb_to_obb(_project_data.stretcher_aabb, stretcher_pose);
-        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(_project_data.buckets, stretcher_obb, _user_settings.collision.radious);
-
-        // Collect first-LOD points of colliding buckets that are inside the stretcher OBB, upload them for rendering
-        size_t collision_point_count = 0;
-        {
-            // TODO(m.wlasiuk) : move this to project + limit amount based on point cloud statistics
-            std::vector<Point> collision_points{};
-            collision_points.reserve(ProjectData::COLLISION_POINTS_CAPACITY);
-
-            for (const glm::ivec3& id : in_obb_ids_in_obb_proximity.first)
-            {
-                auto bucket_it = _project_data.buckets.find(id);
-                if (bucket_it == _project_data.buckets.end())
-                {
-                    continue;
-                }
-
-                PointCloudLOD* first_lod = get_lod_at_index(&bucket_it->second, 0);
-                if (!first_lod)
-                {
-                    continue;
-                }
-
-                for (const PointIntensity& p : first_lod->points)
-                {
-                    if (point_in_obb(p.position, stretcher_obb))
-                    {
-                        collision_points.push_back({p.position});
-
-                        // TODO(m.wlasiuk) : limit amount based on point cloud statistics
-                        if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
-                        {
-                            spdlog::warn("Collision point buffer full : {} points, ignoring the rest", ProjectData::COLLISION_POINTS_CAPACITY);
-                            break;
-                        }
-                    }
-                }
-
-                if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
-                {
-                    break;
-                }
-            }
-
-            collision_point_count = collision_points.size();
-
-            if (collision_point_count > 0)
-            {
-                _project_data.collision_points_vbo->Upload(collision_points.data(), std_vector_size(collision_points));
-            }
-        }
-
-        if (g_key)
-        {
-            glm::vec3 stretcher_position    = glm::vec3(0.0f);
-            glm::mat3 stretcher_orientation = glm::mat3(1.0f);
-
+            stretcher_position    = glm::vec3(0.0f);
+            stretcher_orientation = glm::mat3(1.0f);
             if (_project_data.trajectory_positions.size() && _project_data.trajectory_orientations_mat33.size())
             {
                 const auto& trajectory_point      = _project_data.trajectory_positions[_project_data.trajectory_index];
@@ -621,8 +691,13 @@ int main()
                 stretcher_orientation = trajectoryorientation.orientation;
             }
 
-            glm::mat4 stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
+            stretcher_pose = glm::translate(glm::mat4(1.0f), stretcher_position) * glm::mat4(stretcher_orientation);
+        };
 
+        update_stretcher_pose();
+
+        if (g_key)
+        {
             Viewport vp0    = ctx.viewport_for(0);
             float    rect_x = static_cast<float>(vp0.x);
             float    rect_y = static_cast<float>(height - vp0.y - vp0.h);
@@ -673,6 +748,8 @@ int main()
             }
         }
 
+        update_stretcher_pose();
+
         // One-time snap of viewport 0 camera target to the current trajectory pose (S key)
         if (s_key_clicked && !shift && _project_data.trajectory_positions.size() && !_project_data.lock_viewport0_target_to_trajectory)
         {
@@ -688,209 +765,48 @@ int main()
 
         const int count = static_cast<int>(ctx.active_count);
 
-        if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
+        auto update_cameras = [&]()
         {
-            snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
-        }
-
-        for (int i = 0; i < count; ++i)
-        {
-            if (i >= 1 && ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT)
+            if (_project_data.lock_viewport0_target_to_trajectory && _project_data.trajectory_positions.size())
             {
-                update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
-
-                // Symmetric planes : a slab of +- offset around the stretcher pose, derived from the axis length.
-                // Asymmetric planes are user controlled and left untouched.
-                if (ctx.symmetric_planes[i])
-                {
-                    ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
-                    ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
-                }
-
-                // Orthographic : the projection ignores the camera position, so moving the camera
-                // along the view axis would not change the image. Use the view axis distance as a
-                // dolly instead : the orthographic box grows / shrinks with the distance, so the
-                // distance slider has the same visual effect as in the perspective case.
-                if (ctx.cameras[i].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
-                {
-                    const float fov_half_tan         = std::tan(glm::radians(ctx.cameras[i].fov_y * 0.5f));
-                    ctx.cameras[i].ortho_half_height = std::max(0.01f, ctx.view_axis_distance[i] * fov_half_tan);
-                    ctx.cameras[i].ortho_zoom        = 1.0f;
-                }
+                snap_camera_target_to_trajectory(ctx.cameras[0], _project_data.trajectory_positions[_project_data.trajectory_index].position);
             }
-            else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
-            {
-                unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
-            }
-        }
 
-        // VIEWPORT DIVIDER LINES
-        {
-            int vp_count = static_cast<int>(ctx.active_count);
-            if (vp_count >= 2)
-            {
-                ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
-                ImU32       col = IM_COL32(180, 180, 180, 200);
-
-                // Vertical center line for modes 2 and 4
-                dl->AddLine(
-                    ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
-                    ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
-                    col,
-                    1.0f);
-
-                // Horizontal center line for mode 4 only
-                if (vp_count == 4)
-                {
-                    dl->AddLine(
-                        ImVec2(0.0f, static_cast<float>(height) * 0.5f),
-                        ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
-                        col,
-                        1.0f);
-                }
-            }
-        }
-
-        // WORLD AXES : a camera-relative orientation indicator in the bottom-left of each viewport.
-        {
-            ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
             for (int i = 0; i < count; ++i)
             {
-                const Viewport vp = ctx.viewport_for(i);
-                if (!ctx.draw_axes_overlay[i] || vp.w <= 0 || vp.h <= 0)
-                    continue;
-
-                const float     box_w = static_cast<float>(vp.w) * ctx.axes_overlay_size[i];
-                const float     box_h = static_cast<float>(vp.h) * ctx.axes_overlay_size[i];
-                const ImVec2    box_min(static_cast<float>(vp.x) + 6.0f,
-                                        static_cast<float>(height - vp.y) - box_h - 6.0f);
-                const ImVec2    box_max(box_min.x + box_w, box_min.y + box_h);
-                const ImVec2    center((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
-                const float     axis_length = std::min(box_w, box_h) * 0.32f;
-                const glm::mat3 view_rotation(ctx.cameras[i].get_view());
-
-                struct Axis
+                if (i >= 1 && ctx.camera_modes[i] != CameraMode::CAMERA_MODE_FREE_ORBIT)
                 {
-                    ImVec2      end;
-                    float       depth;
-                    ImU32       color;
-                    const char* label;
-                };
-                std::array<Axis, 3> axes{};
-                const glm::vec3     directions[] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
-                const ImU32         colors[]     = {IM_COL32(255, 90, 90, 230), IM_COL32(90, 255, 90, 230), IM_COL32(100, 155, 255, 230)};
-                const char*         labels[]     = {"X", "Y", "Z"};
-                for (int axis = 0; axis < 3; ++axis)
-                {
-                    const glm::vec3 direction = view_rotation * directions[axis];
-                    axes[axis]                = {ImVec2(center.x + direction.x * axis_length,
-                                                        center.y - direction.y * axis_length),
-                                                 direction.z, colors[axis], labels[axis]};
+                    update_locked_camera(ctx.cameras[i], ctx.camera_modes[i], ctx.view_axis_distance[i], stretcher_position, stretcher_orientation);
+
+                    // Symmetric planes : a slab of +- offset around the stretcher pose, derived from the axis length.
+                    // Asymmetric planes are user controlled and left untouched.
+                    if (ctx.symmetric_planes[i])
+                    {
+                        ctx.cameras[i].near_plane = std::max(0.01f, ctx.view_axis_distance[i] - ctx.symmetric_plane_offset[i]);
+                        ctx.cameras[i].far_plane  = ctx.view_axis_distance[i] + ctx.symmetric_plane_offset[i];
+                    }
+
+                    // Orthographic : the projection ignores the camera position, so moving the camera
+                    // along the view axis would not change the image. Use the view axis distance as a
+                    // dolly instead : the orthographic box grows / shrinks with the distance, so the
+                    // distance slider has the same visual effect as in the perspective case.
+                    if (ctx.cameras[i].projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC)
+                    {
+                        const float fov_half_tan         = std::tan(glm::radians(ctx.cameras[i].fov_y * 0.5f));
+                        ctx.cameras[i].ortho_half_height = std::max(0.01f, ctx.view_axis_distance[i] * fov_half_tan);
+                        ctx.cameras[i].ortho_zoom        = 1.0f;
+                    }
                 }
-                // Draw farther axes first so the ones facing the camera remain legible.
-                std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b)
-                          { return a.depth < b.depth; });
-
-                dl->PushClipRect(box_min, box_max, true);
-                dl->AddRectFilled(box_min, box_max, IM_COL32(12, 12, 12, 120), 4.0f);
-                for (const Axis& axis : axes)
+                else if (ctx.cameras[i].up != glm::vec3(0.0f, 0.0f, 1.0f))
                 {
-                    dl->AddLine(center, axis.end, axis.color, 2.0f);
-                    dl->AddCircleFilled(axis.end, 2.0f, axis.color);
-                    dl->AddText(ImVec2(axis.end.x + 3.0f, axis.end.y - 7.0f), axis.color, axis.label);
-                }
-                dl->PopClipRect();
-            }
-        }
-
-        // MEASUREMENT LABELS : project each midpoint through every active viewport and draw 2-D distance labels
-        if (_user_settings.measurements.draw_enable)
-        {
-            const MeasurementState& ms = _project_data.measurements;
-
-            if (!ms.entries.empty())
-            {
-                ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
-
-                for (int i = 0; i < count; ++i)
-                {
-                    // Per-viewport toggle : measurement labels can be disabled for this viewport
-                    if (!ctx.draw_measurement_labels[i])
-                    {
-                        continue;
-                    }
-
-                    const Camera&  cam = ctx.cameras[i];
-                    const Viewport vp  = ctx.viewport_for(i);
-                    if (vp.w <= 0 || vp.h <= 0)
-                    {
-                        continue;
-                    }
-
-                    const glm::mat4 proj = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
-                    const glm::mat4 view = cam.get_view();
-                    const glm::mat4 MVP  = proj * view;
-
-                    // Top-left corner of the viewport in ImGui (screen) coordinates
-                    // OpenGL vp.y is measured from the bottom, so screen_top = height - (vp.y + vp.h)
-                    const float  vp_screen_x = static_cast<float>(vp.x);
-                    const float  vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
-                    const ImVec2 clip_min(vp_screen_x, vp_screen_y);
-                    const ImVec2 clip_max(vp_screen_x + static_cast<float>(vp.w),
-                                          vp_screen_y + static_cast<float>(vp.h));
-
-                    for (size_t j = 0; j < ms.entries.size(); ++j)
-                    {
-                        const MeasurementEntry& e = ms.entries[j];
-
-                        const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
-                        const glm::vec4 clip     = MVP * glm::vec4(midpoint, 1.0f);
-
-                        // Behind the camera → skip
-                        if (clip.w <= 0.0f)
-                        {
-                            continue;
-                        }
-
-                        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
-
-                        // Outside the NDC cube → skip
-                        if (ndc.x < -1.0f || ndc.x > 1.0f ||
-                            ndc.y < -1.0f || ndc.y > 1.0f ||
-                            ndc.z < -1.0f || ndc.z > 1.0f)
-                        {
-                            continue;
-                        }
-
-                        // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
-                        const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp.w);
-                        const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp.h);
-
-                        char label[64];
-                        std::snprintf(label, sizeof(label), "%zu: %.4f m", j + 1, e.distance_m);
-
-                        const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
-                        const ImVec2 text_size = ImGui::CalcTextSize(label);
-
-                        // Clip the label inside the viewport so it never bleeds into neighbouring viewports
-                        dl->PushClipRect(clip_min, clip_max, true);
-
-                        // Label : near-black background with white text, independent of the measurement line colour
-                        dl->AddRectFilled(
-                            ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
-                            ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
-                            IM_COL32(10, 10, 10, 220),
-                            2.0f);
-
-                        dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
-
-                        dl->PopClipRect();
-                    }
+                    unlock_camera_to_free_orbit(ctx.cameras[i], ctx.view_axis_distance[i]);
                 }
             }
-        }
+        };
 
-        ImGui::Render();
+        update_cameras();
+
+        const uint32_t trajectory_index_before_picking = _project_data.trajectory_index;
 
         // PICKING POINT CLOUD
         {
@@ -1103,6 +1019,66 @@ int main()
             }
         }
 
+        // Picking may select a different pose; resolve its dependent state before rendering.
+        if (_project_data.trajectory_index != trajectory_index_before_picking)
+        {
+            update_stretcher_pose();
+            update_cameras();
+        }
+
+        const OBB  stretcher_obb               = aabb_to_obb(_project_data.stretcher_aabb, stretcher_pose);
+        const auto in_obb_ids_in_obb_proximity = find_buckets_in_obb(_project_data.buckets, stretcher_obb, _user_settings.collision.radious);
+
+        // Collect first-LOD points of colliding buckets that are inside the stretcher OBB, upload them for rendering
+        size_t collision_point_count = 0;
+        {
+            // TODO(m.wlasiuk) : move this to project + limit amount based on point cloud statistics
+            std::vector<Point> collision_points{};
+            collision_points.reserve(ProjectData::COLLISION_POINTS_CAPACITY);
+
+            for (const glm::ivec3& id : in_obb_ids_in_obb_proximity.first)
+            {
+                auto bucket_it = _project_data.buckets.find(id);
+                if (bucket_it == _project_data.buckets.end())
+                {
+                    continue;
+                }
+
+                PointCloudLOD* first_lod = get_lod_at_index(&bucket_it->second, 0);
+                if (!first_lod)
+                {
+                    continue;
+                }
+
+                for (const PointIntensity& p : first_lod->points)
+                {
+                    if (point_in_obb(p.position, stretcher_obb))
+                    {
+                        collision_points.push_back({p.position});
+
+                        // TODO(m.wlasiuk) : limit amount based on point cloud statistics
+                        if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
+                        {
+                            spdlog::warn("Collision point buffer full : {} points, ignoring the rest", ProjectData::COLLISION_POINTS_CAPACITY);
+                            break;
+                        }
+                    }
+                }
+
+                if (collision_points.size() >= ProjectData::COLLISION_POINTS_CAPACITY)
+                {
+                    break;
+                }
+            }
+
+            collision_point_count = collision_points.size();
+
+            if (collision_point_count > 0)
+            {
+                _project_data.collision_points_vbo->Upload(collision_points.data(), std_vector_size(collision_points));
+            }
+        }
+
         // MEASUREMENT PICKING (Shift + LMB)
         {
             if (new_left_click && shift && !ImGui::GetIO().WantCaptureMouse)
@@ -1291,7 +1267,6 @@ int main()
             {
                 const MeasurementState& ms = _project_data.measurements;
 
-                static std::vector<ColoredVertex> meas_verts;
                 meas_verts.clear();
                 for (const MeasurementEntry& e : ms.entries)
                 {
@@ -1305,7 +1280,13 @@ int main()
             }
         }
 
-        auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, Camera& cam)
+        // RENDER : scene and overlays consume the completed updates for this frame.
+
+        glViewport(0, 0, framebuffer_width, framebuffer_height);
+        glClearColor(_user_settings.opengl.clear_color.x, _user_settings.opengl.clear_color.y, _user_settings.opengl.clear_color.z, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        auto draw_scene = [&](const uint32_t viewport_index, const Viewport& vp, const Camera& cam)
         {
             const int pixel_x = static_cast<int>(static_cast<int64_t>(vp.x) * framebuffer_width / width);
             const int pixel_y = static_cast<int>(static_cast<int64_t>(vp.y) * framebuffer_height / height);
@@ -1613,17 +1594,246 @@ int main()
             draw_scene(i, ctx.viewport_for(i), ctx.cameras[i]);
         }
 
+        // VIEWPORT DIVIDER LINES
+        {
+            int vp_count = static_cast<int>(ctx.active_count);
+            if (vp_count >= 2)
+            {
+                ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+                ImU32       col = IM_COL32(180, 180, 180, 200);
+
+                // Vertical center line for modes 2 and 4
+                dl->AddLine(
+                    ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
+                    ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
+                    col,
+                    1.0f);
+
+                // Horizontal center line for mode 4 only
+                if (vp_count == 4)
+                {
+                    dl->AddLine(
+                        ImVec2(0.0f, static_cast<float>(height) * 0.5f),
+                        ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                        col,
+                        1.0f);
+                }
+            }
+        }
+
+        // WORLD AXES : a camera-relative orientation indicator in the bottom-left of each viewport.
+        {
+            ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+            for (int i = 0; i < count; ++i)
+            {
+                const Viewport vp = ctx.viewport_for(i);
+                if (!ctx.draw_axes_overlay[i] || vp.w <= 0 || vp.h <= 0)
+                    continue;
+
+                const float     box_w = static_cast<float>(vp.w) * ctx.axes_overlay_size[i];
+                const float     box_h = static_cast<float>(vp.h) * ctx.axes_overlay_size[i];
+                const ImVec2    box_min(static_cast<float>(vp.x) + 6.0f,
+                                        static_cast<float>(height - vp.y) - box_h - 6.0f);
+                const ImVec2    box_max(box_min.x + box_w, box_min.y + box_h);
+                const ImVec2    center((box_min.x + box_max.x) * 0.5f, (box_min.y + box_max.y) * 0.5f);
+                const float     axis_length = std::min(box_w, box_h) * 0.32f;
+                const glm::mat3 view_rotation(ctx.cameras[i].get_view());
+
+                struct Axis
+                {
+                    ImVec2      end;
+                    float       depth;
+                    ImU32       color;
+                    const char* label;
+                };
+                std::array<Axis, 3> axes{};
+                const glm::vec3     directions[] = {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+                const ImU32         colors[]     = {IM_COL32(255, 90, 90, 230), IM_COL32(90, 255, 90, 230), IM_COL32(100, 155, 255, 230)};
+                const char*         labels[]     = {"X", "Y", "Z"};
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    const glm::vec3 direction = view_rotation * directions[axis];
+                    axes[axis]                = {ImVec2(center.x + direction.x * axis_length,
+                                                        center.y - direction.y * axis_length),
+                                                 direction.z, colors[axis], labels[axis]};
+                }
+                // Draw farther axes first so the ones facing the camera remain legible.
+                std::sort(axes.begin(), axes.end(), [](const Axis& a, const Axis& b)
+                          { return a.depth < b.depth; });
+
+                dl->PushClipRect(box_min, box_max, true);
+                dl->AddRectFilled(box_min, box_max, IM_COL32(12, 12, 12, 120), 4.0f);
+                for (const Axis& axis : axes)
+                {
+                    dl->AddLine(center, axis.end, axis.color, 2.0f);
+                    dl->AddCircleFilled(axis.end, 2.0f, axis.color);
+                    dl->AddText(ImVec2(axis.end.x + 3.0f, axis.end.y - 7.0f), axis.color, axis.label);
+                }
+                dl->PopClipRect();
+            }
+        }
+
+        // MEASUREMENT LABELS : project each midpoint through every active viewport and draw 2-D distance labels
+        if (_user_settings.measurements.draw_enable)
+        {
+            const MeasurementState& ms = _project_data.measurements;
+
+            if (!ms.entries.empty())
+            {
+                ImDrawList* dl = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
+
+                for (int i = 0; i < count; ++i)
+                {
+                    // Per-viewport toggle : measurement labels can be disabled for this viewport
+                    if (!ctx.draw_measurement_labels[i])
+                    {
+                        continue;
+                    }
+
+                    const Camera&  cam = ctx.cameras[i];
+                    const Viewport vp  = ctx.viewport_for(i);
+                    if (vp.w <= 0 || vp.h <= 0)
+                    {
+                        continue;
+                    }
+
+                    const glm::mat4 proj = cam.get_projection(static_cast<float>(vp.w), static_cast<float>(vp.h));
+                    const glm::mat4 view = cam.get_view();
+                    const glm::mat4 MVP  = proj * view;
+
+                    // Top-left corner of the viewport in ImGui (screen) coordinates
+                    // OpenGL vp.y is measured from the bottom, so screen_top = height - (vp.y + vp.h)
+                    const float  vp_screen_x = static_cast<float>(vp.x);
+                    const float  vp_screen_y = static_cast<float>(height - (vp.y + vp.h));
+                    const ImVec2 clip_min(vp_screen_x, vp_screen_y);
+                    const ImVec2 clip_max(vp_screen_x + static_cast<float>(vp.w),
+                                          vp_screen_y + static_cast<float>(vp.h));
+
+                    for (size_t j = 0; j < ms.entries.size(); ++j)
+                    {
+                        const MeasurementEntry& e = ms.entries[j];
+
+                        const glm::vec3 midpoint = 0.5f * (e.point_a + e.point_b);
+                        const glm::vec4 clip     = MVP * glm::vec4(midpoint, 1.0f);
+
+                        // Behind the camera → skip
+                        if (clip.w <= 0.0f)
+                        {
+                            continue;
+                        }
+
+                        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+                        // Outside the NDC cube → skip
+                        if (ndc.x < -1.0f || ndc.x > 1.0f ||
+                            ndc.y < -1.0f || ndc.y > 1.0f ||
+                            ndc.z < -1.0f || ndc.z > 1.0f)
+                        {
+                            continue;
+                        }
+
+                        // NDC → ImGui screen pixel (flip Y: OpenGL Y-up, ImGui Y-down)
+                        const float px = vp_screen_x + (ndc.x * 0.5f + 0.5f) * static_cast<float>(vp.w);
+                        const float py = vp_screen_y + (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(vp.h);
+
+                        char label[64];
+                        std::snprintf(label, sizeof(label), "%zu: %.4f m", j + 1, e.distance_m);
+
+                        const ImVec2 text_pos  = ImVec2(px + 4.0f, py - 8.0f);
+                        const ImVec2 text_size = ImGui::CalcTextSize(label);
+
+                        // Clip the label inside the viewport so it never bleeds into neighbouring viewports
+                        dl->PushClipRect(clip_min, clip_max, true);
+
+                        // Label : near-black background with white text, independent of the measurement line colour
+                        dl->AddRectFilled(
+                            ImVec2(text_pos.x - 2.0f, text_pos.y - 1.0f),
+                            ImVec2(text_pos.x + text_size.x + 2.0f, text_pos.y + text_size.y + 1.0f),
+                            IM_COL32(10, 10, 10, 220),
+                            2.0f);
+
+                        dl->AddText(text_pos, IM_COL32(255, 255, 255, 255), label);
+
+                        dl->PopClipRect();
+                    }
+                }
+            }
+        }
+
+        ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(window);
     }
+}
 
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
+static void shutdown(ApplicationResources& runtime, ProjectData& project_data)
+{
+    if (runtime.window)
+    {
+        glfwMakeContextCurrent(runtime.window);
 
-    glfwDestroyWindow(window);
-    glfwTerminate();
+        if (runtime.imgui_opengl_initialized)
+        {
+            ImGui_ImplOpenGL3_Shutdown();
+            runtime.imgui_opengl_initialized = false;
+        }
+        if (runtime.imgui_glfw_initialized)
+        {
+            ImGui_ImplGlfw_Shutdown();
+            runtime.imgui_glfw_initialized = false;
+        }
 
-    return 0;
+        glfwSetDropCallback(runtime.window, nullptr);
+        glfwSetCursorPosCallback(runtime.window, nullptr);
+        glfwSetMouseButtonCallback(runtime.window, nullptr);
+        glfwSetScrollCallback(runtime.window, nullptr);
+        glfwSetWindowSizeCallback(runtime.window, nullptr);
+        glfwSetWindowUserPointer(runtime.window, nullptr);
+
+        if (runtime.opengl_initialized)
+        {
+            free_project_data(project_data);
+            runtime.render_resources.reset();
+            runtime.opengl_initialized = false;
+        }
+        if (runtime.implot_context)
+        {
+            ImPlot::DestroyContext(runtime.implot_context);
+            runtime.implot_context = nullptr;
+        }
+        if (runtime.imgui_context)
+        {
+            ImGui::DestroyContext(runtime.imgui_context);
+            runtime.imgui_context = nullptr;
+        }
+
+        glfwDestroyWindow(runtime.window);
+        runtime.window = nullptr;
+    }
+    if (runtime.glfw_initialized)
+    {
+        glfwTerminate();
+        runtime.glfw_initialized = false;
+    }
+}
+
+int main()
+{
+    GuiState     _gui_state     = {};
+    UserSettings _user_settings = {};
+    ProjectData  _project_data  = {};
+
+    WindowContext        window_context{_project_data, _user_settings};
+    ApplicationResources resources{};
+
+    if (!initialize(resources, window_context))
+    {
+        shutdown(resources, _project_data);
+        return EXIT_FAILURE;
+    }
+
+    render_loop(resources, _gui_state, _user_settings, _project_data);
+    shutdown(resources, _project_data);
+    return EXIT_SUCCESS;
 }

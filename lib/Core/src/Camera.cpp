@@ -302,6 +302,13 @@ void cursor_position_callback(GLFWwindow* window, double xpos, double ypos)
         return;
     }
 
+    cursor_position_callback(window, *ctx, xpos, ypos);
+}
+
+void cursor_position_callback(GLFWwindow*, MultiViewContext& context, double xpos, double ypos)
+{
+    auto* ctx = &context;
+
     int active_idx = -1;
     for (int i = 0; i < MultiViewContext::MAX_CAMERAS; ++i)
     {
@@ -343,6 +350,13 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
     {
         return;
     }
+
+    mouse_button_callback(window, *ctx, button, action, mods);
+}
+
+void mouse_button_callback(GLFWwindow* window, MultiViewContext& context, int button, int action, int mods)
+{
+    auto* ctx = &context;
 
     if (action == GLFW_RELEASE)
     {
@@ -407,7 +421,18 @@ void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     auto* ctx = static_cast<MultiViewContext*>(glfwGetWindowUserPointer(window));
-    if (!ctx || ImGui::GetIO().WantCaptureMouse)
+    if (!ctx)
+    {
+        return;
+    }
+
+    scroll_callback(window, *ctx, xoffset, yoffset);
+}
+
+void scroll_callback(GLFWwindow* window, MultiViewContext& context, double xoffset, double yoffset)
+{
+    auto* ctx = &context;
+    if (ImGui::GetIO().WantCaptureMouse)
     {
         return;
     }
@@ -439,6 +464,13 @@ void size_callback(GLFWwindow* window, int32_t width, int32_t height)
     {
         return;
     }
+
+    size_callback(window, *ctx, width, height);
+}
+
+void size_callback(GLFWwindow*, MultiViewContext& context, int32_t width, int32_t height)
+{
+    auto* ctx = &context;
 
     ctx->window_width  = width;
     ctx->window_height = height;

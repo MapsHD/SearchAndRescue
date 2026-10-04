@@ -52,6 +52,23 @@ void free_project_data(ProjectData& project_data)
 
     delete project_data.collision_points_vao;
     delete project_data.collision_points_vbo;
+
+    delete project_data.measurement_line_vao;
+    delete project_data.measurement_line_vbo;
+
+    project_data.trajectory_axes_vao         = nullptr;
+    project_data.trajectory_positions_vao    = nullptr;
+    project_data.trajectory_positions_vbo    = nullptr;
+    project_data.trajectory_orientations_vbo = nullptr;
+    project_data.stretcher_aabb_vao          = nullptr;
+    project_data.stretcher_aabb_vbo          = nullptr;
+    project_data.stretcher_vao               = nullptr;
+    project_data.stretcher_vbo               = nullptr;
+    project_data.stretcher_index_buffer      = nullptr;
+    project_data.collision_points_vao        = nullptr;
+    project_data.collision_points_vbo        = nullptr;
+    project_data.measurement_line_vao        = nullptr;
+    project_data.measurement_line_vbo        = nullptr;
 }
 
 bool rebuild_trajectory_mat33_opengl_data(ProjectData& project_data)
