@@ -101,6 +101,36 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                 ctx.active_count = ViewportCount::VIEWPORT_COUNT_FOUR;
             }
 
+            if (ctx.active_count == ViewportCount::VIEWPORT_COUNT_FOUR)
+            {
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(120.0f);
+                int layout = static_cast<int>(ctx.layout);
+                if (ImGui::Combo("##viewport_layout", &layout, "2x2 grid\0Big + 3 right\0"))
+                {
+                    ctx.layout = static_cast<ViewportLayout>(layout);
+                }
+                if (ImGui::IsItemHovered())
+                {
+                    ImGui::SetTooltip("Layout of the 4-viewport mode\n2x2 grid : four equal viewports\nBig + 3 right : one large viewport with three smaller\nviewports stacked on the right");
+                }
+
+                if (ctx.layout == ViewportLayout::VIEWPORT_LAYOUT_ONE_BIG)
+                {
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(160.0f);
+                    float fraction = ctx.large_viewport_fraction;
+                    if (ImGui::SliderFloat("##large_viewport_fraction", &fraction, 0.5f, 0.75f, "large : %.3f", ImGuiSliderFlags_AlwaysClamp))
+                    {
+                        ctx.large_viewport_fraction = fraction;
+                    }
+                    if (ImGui::IsItemHovered())
+                    {
+                        ImGui::SetTooltip("Width of the large viewport as a percentage of the window\n(50% = half, 75% = three quarters, default 2/3)");
+                    }
+                }
+            }
+
             static const char* camera_mode_names[] = {"Free", "+X", "-X", "+Y", "-Y", "+Z", "-Z", "+local X", "-local X", "+local Y", "-local Y", "+local Z", "-local Z"};
 
             for (int i = 0; i <= 3; ++i)

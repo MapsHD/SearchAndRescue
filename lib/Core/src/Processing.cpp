@@ -391,7 +391,7 @@ bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<g
     return true;
 }
 
-bool bucket_in_front_of_camera(const AABB& aabb, const glm::vec4& near_plane, const glm::vec3& camera_pos)
+bool bucket_in_front_of_camera(const AABB& aabb, const glm::vec4& near_plane)
 {
     const glm::vec3& bmin = aabb.min;
     const glm::vec3& bmax = aabb.max;
@@ -404,16 +404,6 @@ bool bucket_in_front_of_camera(const AABB& aabb, const glm::vec4& near_plane, co
         (near_plane.z >= 0.0f) ? bmax.z : bmin.z};
 
     if (glm::dot(glm::vec3(near_plane), positive) + near_plane.w < 0.0f)
-    {
-        return false;
-    }
-
-    // Orthographic cameras : the near plane is parallel to the image plane, so its signed distance
-    // is exactly the depth behind the camera (positive in front). The conservative positive vertex
-    // test above is too weak there (a large bucket can have its furthest corner in front while
-    // sitting entirely behind the camera), so use the box centre.
-    const glm::vec3 center = 0.5f * (bmin + bmax);
-    if (glm::dot(glm::vec3(near_plane), center - camera_pos) + near_plane.w < 0.0f)
     {
         return false;
     }

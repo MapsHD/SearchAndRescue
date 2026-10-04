@@ -4,9 +4,11 @@
 #include <GLFW/glfw3.h>
 // clang-format on
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/color_space.hpp>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
@@ -17,6 +19,7 @@
 #include <implot.h>
 
 #include <memory>
+#include <random>
 
 #include <Core/Camera.h>
 #include <Core/Debug.h>
@@ -134,6 +137,11 @@ static std::string describe_pick_tolerance(const PointPickTolerance& tolerance)
     }
     return fmt::format("the larger of {:.3f} m and {:.1f} px", tolerance.radius_m, tolerance.radius_px);
 }
+
+// Random hue generator for per-measurement bright colours
+static std::random_device                    measurement_random_device;
+static std::mt19937                          measurement_random_engine(measurement_random_device());
+static std::uniform_real_distribution<float> hue_distribution(0.0f, 1.0f);
 
 static WindowContext* get_window_context(GLFWwindow* window)
 {
@@ -1009,6 +1017,11 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                             entry.point_b    = point;
                             entry.distance_m = glm::length(entry.point_b - entry.point_a);
 
+                            // Random bright colour : HSV with s = v = 1 keeps the line / label vivid
+                            // glm::rgbColor expects the hue in degrees (0-360), not 0-1
+                            const float random_hue = hue_distribution(measurement_random_engine) * 360.0f;
+                            entry.color            = glm::rgbColor(glm::vec3(random_hue, 1.0f, 1.0f));
+
                             if (ms.entries.size() < ProjectData::MEASUREMENT_LINE_CAPACITY)
                             {
                                 ms.entries.push_back(entry);
@@ -1242,8 +1255,8 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         continue;
                     }
 
-                    // Cheap rejection before the LOD traversal : a bucket entirely behind the camera can never be seen
-                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    // Cheap rejection before the LOD traversal : discard buckets entirely behind the near plane
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4]))
                     {
                         continue;
                     }
@@ -1301,15 +1314,13 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             // POINT CLOUD BOXES
             if (_user_settings.point_cloud.draw_enable_bbox && _project_data.buckets.size() && (draw_any_cave_boxes))
             {
-                glm::vec3 camera_pos = glm::vec3(glm::inverse(view)[3]);
-
                 bounding_box_program->Bind();
                 bounding_box_program->PushUniform16F32("u_MVP", MVP);
 
                 for (auto& [ID, bucket] : _project_data.buckets)
                 {
-                    // Cheap rejection before the frustum test : a bucket entirely behind the camera can never be seen
-                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4], camera_pos))
+                    // Cheap rejection before the frustum test : discard buckets entirely behind the near plane
+                    if (!bucket_in_front_of_camera(bucket.aabb, frustum[4]))
                     {
                         continue;
                     }
@@ -1381,21 +1392,35 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 ImDrawList* dl  = ImGui::GetBackgroundDrawList(ImGui::GetMainViewport());
                 ImU32       col = IM_COL32(180, 180, 180, 200);
 
-                // Vertical center line for modes 2 and 4
-                dl->AddLine(
-                    ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
-                    ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
-                    col,
-                    1.0f);
-
-                // Horizontal center line for mode 4 only
-                if (vp_count == 4)
+                if (vp_count == 4 && ctx.layout == ViewportLayout::VIEWPORT_LAYOUT_ONE_BIG)
                 {
+                    // Vertical line at the 2/3 boundary separating the large viewport from the three stacked ones
+                    const float split_x = static_cast<float>(ctx.viewport_for(0).w);
+                    dl->AddLine(ImVec2(split_x, 0.0f), ImVec2(split_x, static_cast<float>(height)), col, 1.0f);
+
+                    // Horizontal lines separating the three stacked viewports on the right
+                    const float third = static_cast<float>(height) / 3.0f;
+                    dl->AddLine(ImVec2(split_x, third), ImVec2(static_cast<float>(width), third), col, 1.0f);
+                    dl->AddLine(ImVec2(split_x, third * 2.0f), ImVec2(static_cast<float>(width), third * 2.0f), col, 1.0f);
+                }
+                else
+                {
+                    // Vertical center line for modes 2 and 4
                     dl->AddLine(
-                        ImVec2(0.0f, static_cast<float>(height) * 0.5f),
-                        ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                        ImVec2(static_cast<float>(width) * 0.5f, 0.0f),
+                        ImVec2(static_cast<float>(width) * 0.5f, static_cast<float>(height)),
                         col,
                         1.0f);
+
+                    // Horizontal center line for mode 4 only
+                    if (vp_count == 4)
+                    {
+                        dl->AddLine(
+                            ImVec2(0.0f, static_cast<float>(height) * 0.5f),
+                            ImVec2(static_cast<float>(width), static_cast<float>(height) * 0.5f),
+                            col,
+                            1.0f);
+                    }
                 }
             }
         }
