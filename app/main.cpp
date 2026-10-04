@@ -833,9 +833,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     glm::vec3 ray_dir{};
                     pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    glm::vec3 camera_pos     = pick_cam.position;
-                    glm::vec3 camera_forward = glm::normalize(pick_cam.target - pick_cam.position);
-
                     if (alt)
                     {
                         // Pick closest trajectory point to the cast ray (within 0.25 m of the ray)
@@ -893,112 +890,23 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     }
                     else if (ctrl)
                     {
-                        PointCloudRecord* picked_record = nullptr;
-                        glm::ivec3        picked_id{};
-                        float             closest_dist = std::numeric_limits<float>::max();
+                        const PointPickTolerance tolerance{};
 
-                        const float PICK_RADIUS = 0.1f;
+                        const std::optional<glm::vec3> picked_point = pick_point_along_ray(_project_data.buckets, pick_cam, ray_origin, ray_dir, tolerance);
 
-                        for (auto& [ID, bucket] : _project_data.buckets)
+                        if (picked_point)
                         {
-                            glm::vec3 center    = 0.5f * (bucket.aabb.min + bucket.aabb.max);
-                            glm::vec3 to_center = center - camera_pos;
+                            const glm::vec3& point = *picked_point;
 
-                            if (glm::dot(to_center, camera_forward) <= 0.0f)
-                            {
-                                continue;
-                            }
+                            spdlog::info("Point pick in viewport {} : point ({:.3f}, {:.3f}, {:.3f})", pick_idx, point.x, point.y, point.z);
 
-                            // simple bounding-box picking using record extent
-                            glm::vec3 bmin = bucket.aabb.min;
-                            glm::vec3 bmax = bucket.aabb.max;
-
-                            float tmin = 0.0f, tmax = 0.0f;
-
-                            for (int i = 0; i < 3; ++i)
-                            {
-                                if (std::abs(ray_dir[i]) < 1e-6f)
-                                {
-                                    if (ray_origin[i] < bmin[i] || ray_origin[i] > bmax[i])
-                                    {
-                                        tmin = tmax = -1.0f;
-                                        break;
-                                    }
-                                }
-                                else
-                                {
-                                    float invD = 1.0f / ray_dir[i];
-                                    float t0   = (bmin[i] - ray_origin[i]) * invD;
-                                    float t1   = (bmax[i] - ray_origin[i]) * invD;
-                                    if (t0 > t1)
-                                        std::swap(t0, t1);
-                                    tmin = (i == 0) ? t0 : std::max(tmin, t0);
-                                    tmax = (i == 0) ? t1 : std::min(tmax, t1);
-                                }
-                            }
-
-                            if (tmax >= tmin && tmin >= 0.0f && tmin < closest_dist)
-                            {
-                                closest_dist  = tmin;
-                                picked_record = &bucket;
-                                picked_id     = ID;
-                            }
-                        }
-
-                        if (picked_record)
-                        {
-                            const float POINT_PICK_RADIUS = 0.05f;
-
-                            bool      point_found = false;
-                            float     best_d      = POINT_PICK_RADIUS;
-                            float     best_t      = std::numeric_limits<float>::max();
-                            glm::vec3 best_point{};
-
-                            for (PointCloudLOD* lod = picked_record->lods; lod; lod = lod->next)
-                            {
-                                for (const PointIntensity& p : lod->points)
-                                {
-                                    const glm::vec3 to_point = p.position - ray_origin;
-                                    const float     t        = glm::dot(to_point, ray_dir);
-
-                                    if (t <= 0.0f)
-                                    {
-                                        continue;
-                                    }
-
-                                    const float d = glm::length(to_point - t * ray_dir);
-
-                                    if (d > best_d)
-                                    {
-                                        continue;
-                                    }
-
-                                    if (!point_found || d < best_d - 1e-4f || (d < best_d + 1e-4f && t < best_t))
-                                    {
-                                        point_found = true;
-                                        best_d      = d;
-                                        best_t      = t;
-                                        best_point  = p.position;
-                                    }
-                                }
-                            }
-
-                            if (point_found)
-                            {
-                                spdlog::info("Point pick in viewport {} : bucket [{} {} {}], point ({:.3f}, {:.3f}, {:.3f}) (distance to ray {:.3f} m)", pick_idx, picked_id.x, picked_id.y, picked_id.z, best_point.x, best_point.y, best_point.z, best_d);
-
-                                glm::vec3 offset  = pick_cam.position - pick_cam.target;
-                                pick_cam.target   = best_point;
-                                pick_cam.position = best_point + offset;
-                            }
-                            else
-                            {
-                                spdlog::warn("Point picking missed ... (no point within {:.2f} m of ray in bucket [{} {} {}])", POINT_PICK_RADIUS, picked_id.x, picked_id.y, picked_id.z);
-                            }
+                            const glm::vec3 offset = pick_cam.position - pick_cam.target;
+                            pick_cam.target        = point;
+                            pick_cam.position      = point + offset;
                         }
                         else
                         {
-                            spdlog::warn("Point picking missed ... (ray hits no bucket)");
+                            spdlog::warn("Point picking missed ... (no point within {:.2f} m of ray)", tolerance.radius_m);
                         }
                     }
                 }
@@ -1092,20 +1000,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     glm::vec3 ray_dir{};
                     pick_cam.screen_ray(x_ndc, y_ndc, static_cast<float>(vp.w), static_cast<float>(vp.h), ray_origin, ray_dir);
 
-                    // Find the point cloud point closest to the camera (smallest view depth) whose
-                    // distance to the ray is within the pick radius.
-                    //
-                    // Depth is measured along the camera forward axis from the camera position, the same
-                    // way the near / far planes clip what is rendered. It must not be the distance along
-                    // the ray : for a perspective camera an off-centre ray is longer than the view depth,
-                    // so visible points close to the far plane would be rejected near the viewport edges
-                    // (this shows up in the narrow near / far slab of the locked axis viewports).
-                    // For an orthographic camera both are identical, the ray origin only shifts
-                    // perpendicular to the forward axis.
-                    const bool      is_ortho     = pick_cam.projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC;
-                    const glm::vec3 view_forward = glm::normalize(pick_cam.target - pick_cam.position);
-                    const glm::vec3 abs_forward  = glm::abs(view_forward);
-
                     // The pick tolerance is defined on screen : points are rendered as point_size pixel
                     // squares, so a click on a visible point must hit it however far the camera is.
                     // Collision points are drawn bigger than the rest of the cloud, use the largest size on screen.
@@ -1116,116 +1010,30 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         visible_point_size = std::max(visible_point_size, _user_settings.collision.points_size);
                     }
 
-                    const float MEAS_PICK_RADIUS_MIN  = 0.05f;
                     const float framebuffer_to_screen = static_cast<float>(width) / static_cast<float>(framebuffer_width);
-                    const float pick_radius_px        = 0.5f * visible_point_size * framebuffer_to_screen + 3.0f;
 
-                    // World units per screen pixel : proportional to the depth for perspective, constant for orthographic
-                    const float world_per_pixel_at_unit_depth = pick_cam.world_units_per_pixel(1.0f);
+                    PointPickTolerance tolerance{};
+                    tolerance.radius_px = 0.5f * visible_point_size * framebuffer_to_screen + 3.0f;
 
-                    // Buckets are visited front-to-back (sorted by the nearest depth any of their points
-                    // can have) so that the search stops as soon as a bucket cannot beat the current best.
-                    // Buckets entirely outside the near / far planes are not visited at all.
-                    struct BucketCandidate
+                    const std::optional<glm::vec3> picked_point = pick_point_along_ray(_project_data.buckets, pick_cam, ray_origin, ray_dir, tolerance);
+
+                    if (picked_point)
                     {
-                        float                   min_depth;
-                        const PointCloudRecord* bucket;
-                    };
-
-                    const float depth_slack = 0.01f; // the bucket AABB is a grid cell, keep boundary points inside
-
-                    std::vector<BucketCandidate> sorted_buckets;
-                    sorted_buckets.reserve(_project_data.buckets.size());
-                    for (auto& [ID, bucket] : _project_data.buckets)
-                    {
-                        const glm::vec3 center       = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
-                        const glm::vec3 half_extent  = (bucket.aabb.max - bucket.aabb.min) * 0.5f;
-                        const float     center_depth = glm::dot(center - pick_cam.position, view_forward);
-                        const float     reach        = glm::dot(abs_forward, half_extent) + depth_slack;
-
-                        if (center_depth + reach < pick_cam.near_plane || center_depth - reach > pick_cam.far_plane)
-                        {
-                            continue;
-                        }
-
-                        sorted_buckets.push_back({center_depth - reach, &bucket});
-                    }
-                    std::sort(sorted_buckets.begin(), sorted_buckets.end(),
-                              [](const BucketCandidate& a, const BucketCandidate& b)
-                              { return a.min_depth < b.min_depth; });
-
-                    bool      point_found = false;
-                    float     best_depth  = std::numeric_limits<float>::max();
-                    glm::vec3 best_point{};
-
-                    for (const BucketCandidate& candidate : sorted_buckets)
-                    {
-                        // Early-exit : buckets are sorted by their nearest possible depth, so no
-                        // remaining bucket can contain a point nearer than the current best.
-                        if (point_found && candidate.min_depth >= best_depth)
-                        {
-                            break;
-                        }
-
-                        for (PointCloudLOD* lod = candidate.bucket->lods; lod; lod = lod->next)
-                        {
-                            for (const PointIntensity& p : lod->points)
-                            {
-                                const float depth = glm::dot(p.position - pick_cam.position, view_forward);
-
-                                // Respect camera near/far planes
-                                if (depth < pick_cam.near_plane || depth > pick_cam.far_plane)
-                                {
-                                    continue;
-                                }
-
-                                // Skip if this point is already farther than our current best
-                                if (point_found && depth >= best_depth)
-                                {
-                                    continue;
-                                }
-
-                                const glm::vec3 to_point = p.position - ray_origin;
-                                const float     t        = glm::dot(to_point, ray_dir);
-
-                                // Perspective : never pick behind the camera
-                                if (!is_ortho && t <= 0.0f)
-                                {
-                                    continue;
-                                }
-
-                                // Distance from point to ray must be within the pick radius at this depth
-                                const float     radius  = std::max(MEAS_PICK_RADIUS_MIN, pick_radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : depth));
-                                const glm::vec3 off_ray = to_point - t * ray_dir;
-                                if (glm::dot(off_ray, off_ray) > radius * radius)
-                                {
-                                    continue;
-                                }
-
-                                // Among all points within the radius, prefer the closest to camera (smallest depth)
-                                point_found = true;
-                                best_depth  = depth;
-                                best_point  = p.position;
-                            }
-                        }
-                    }
-
-                    if (point_found)
-                    {
-                        MeasurementState& ms = _project_data.measurements;
+                        const glm::vec3&  point = *picked_point;
+                        MeasurementState& ms    = _project_data.measurements;
 
                         if (!ms.pending_point.has_value())
                         {
                             // First pick : store the start point
-                            ms.pending_point = best_point;
-                            spdlog::info("Measurement pick A in viewport {} : ({:.3f}, {:.3f}, {:.3f})", pick_idx, best_point.x, best_point.y, best_point.z);
+                            ms.pending_point = point;
+                            spdlog::info("Measurement pick A in viewport {} : ({:.3f}, {:.3f}, {:.3f})", pick_idx, point.x, point.y, point.z);
                         }
                         else
                         {
                             // Second pick : complete the measurement
                             MeasurementEntry entry;
                             entry.point_a    = ms.pending_point.value();
-                            entry.point_b    = best_point;
+                            entry.point_b    = point;
                             entry.distance_m = glm::length(entry.point_b - entry.point_a);
 
                             if (ms.entries.size() < ProjectData::MEASUREMENT_LINE_CAPACITY)
@@ -1238,12 +1046,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                             }
 
                             ms.pending_point.reset();
-                            spdlog::info("Measurement pick B in viewport {} : ({:.3f}, {:.3f}, {:.3f}) | distance = {:.4f} m", pick_idx, best_point.x, best_point.y, best_point.z, entry.distance_m);
+                            spdlog::info("Measurement pick B in viewport {} : ({:.3f}, {:.3f}, {:.3f}) | distance = {:.4f} m", pick_idx, point.x, point.y, point.z, entry.distance_m);
                         }
                     }
                     else
                     {
-                        spdlog::warn("Measurement picking missed in viewport {} : no point within {:.1f} px of the click between the near / far planes", pick_idx, pick_radius_px);
+                        spdlog::warn("Measurement picking missed in viewport {} : no point within {:.1f} px of the click between the near / far planes", pick_idx, tolerance.radius_px);
                     }
                 }
             }

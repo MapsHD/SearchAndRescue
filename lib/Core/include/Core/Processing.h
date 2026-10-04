@@ -1,6 +1,9 @@
 #pragma once
 
+#include <Core/Camera.h>
 #include <Core/PointCloud.h>
+
+#include <optional>
 
 glm::ivec3 calculate_bucket_id(const glm::vec3& p, const float E, const bool use_centered);
 
@@ -30,3 +33,27 @@ void compute_camera_frustum_planes(const glm::mat4& view, const glm::mat4& proje
 bool lod_in_camera_frustum(const PointCloudLOD& lod, const std::array<glm::vec4, 6>& planes);
 
 bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<glm::vec4, 6>& planes);
+
+// Tolerance of point picking : perpendicular distance between a point and the picking ray
+struct PointPickTolerance
+{
+    // Fixed world-space radius, also the lower bound of the on-screen tolerance
+    float radius_m = 0.025f;
+
+    // Optional on-screen tolerance in pixels, converted to world units at the view depth of each point
+    // (0 disables it, only radius_m applies)
+    float radius_px = 0.0f;
+};
+
+// Picks the point cloud point under the ray cast from the camera (see Camera::screen_ray).
+//
+// Buckets outside the camera near / far planes (this includes everything behind a perspective camera) are
+// rejected, the remaining buckets crossed by the ray are visited from the closest to the furthest and
+// searched for points within the tolerance of the ray. The point closest to the camera along the ray wins.
+// Returns std::nullopt when no point is found.
+std::optional<glm::vec3> pick_point_along_ray(
+    const PointCloudBucket&   buckets,
+    const Camera&             camera,
+    const glm::vec3&          ray_origin,
+    const glm::vec3&          ray_direction,
+    const PointPickTolerance& tolerance = {});

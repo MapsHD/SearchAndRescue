@@ -1,5 +1,9 @@
 #include <Core/Processing.h>
 
+#include <algorithm>
+#include <limits>
+#include <vector>
+
 glm::ivec3 calculate_bucket_id(const glm::vec3& p, const float E, const bool use_centered)
 {
     glm::vec3 scaled = p / E;
@@ -385,4 +389,171 @@ bool record_in_camera_frustum(const PointCloudRecord& record, const std::array<g
     }
 
     return true;
+}
+
+namespace
+{
+    // Slab test of a ray against an AABB : returns the ray parameters of the entry and exit points
+    // (the entry may be negative when the ray origin is inside the box)
+    bool intersect_ray_aabb(const glm::vec3& origin, const glm::vec3& direction, const glm::vec3& box_min, const glm::vec3& box_max, float& out_t_enter, float& out_t_exit)
+    {
+        float t_enter = -std::numeric_limits<float>::max();
+        float t_exit  = std::numeric_limits<float>::max();
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (std::abs(direction[i]) < 1e-6f)
+            {
+                if (origin[i] < box_min[i] || origin[i] > box_max[i])
+                {
+                    return false;
+                }
+                continue;
+            }
+
+            const float inv_d = 1.0f / direction[i];
+            float       t0    = (box_min[i] - origin[i]) * inv_d;
+            float       t1    = (box_max[i] - origin[i]) * inv_d;
+
+            if (t0 > t1)
+            {
+                std::swap(t0, t1);
+            }
+
+            t_enter = std::max(t_enter, t0);
+            t_exit  = std::min(t_exit, t1);
+
+            if (t_enter > t_exit)
+            {
+                return false;
+            }
+        }
+
+        out_t_enter = t_enter;
+        out_t_exit  = t_exit;
+        return true;
+    }
+} // namespace
+
+std::optional<glm::vec3> pick_point_along_ray(
+    const PointCloudBucket&   buckets,
+    const Camera&             camera,
+    const glm::vec3&          ray_origin,
+    const glm::vec3&          ray_direction,
+    const PointPickTolerance& tolerance)
+{
+    // Depth is measured along the camera forward axis from the camera position, the same way the near / far
+    // planes clip what is rendered. It must not be the distance along the ray : for a perspective camera an
+    // off-centre ray is longer than the view depth, so visible points close to the far plane would be rejected
+    // near the viewport edges (this shows up in the narrow near / far slab of the locked axis viewports).
+    // For an orthographic camera both are identical, the ray origin only shifts perpendicular to the forward axis.
+    const bool      is_ortho     = camera.projection_type == ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC;
+    const glm::vec3 view_forward = glm::normalize(camera.target - camera.position);
+    const glm::vec3 abs_forward  = glm::abs(view_forward);
+
+    // World units per screen pixel : proportional to the depth for perspective, constant for orthographic
+    const float world_per_pixel_at_unit_depth = camera.world_units_per_pixel(1.0f);
+
+    const auto radius_at_depth = [&](const float depth)
+    {
+        const float screen_radius = tolerance.radius_px * world_per_pixel_at_unit_depth * (is_ortho ? 1.0f : std::max(depth, 0.0f));
+        return std::max(tolerance.radius_m, screen_radius);
+    };
+
+    struct BucketCandidate
+    {
+        float                   t_enter;
+        const PointCloudRecord* bucket;
+    };
+
+    std::vector<BucketCandidate> candidates;
+    candidates.reserve(buckets.size());
+
+    for (const auto& [id, bucket] : buckets)
+    {
+        if (!bucket.lods)
+        {
+            continue;
+        }
+
+        const glm::vec3 center       = (bucket.aabb.min + bucket.aabb.max) * 0.5f;
+        const glm::vec3 half_extent  = (bucket.aabb.max - bucket.aabb.min) * 0.5f;
+        const float     center_depth = glm::dot(center - camera.position, view_forward);
+        const float     reach        = glm::dot(abs_forward, half_extent);
+
+        // The ray may hit a point of the bucket without crossing its box, grow the box by the pick radius
+        const float margin = radius_at_depth(center_depth + reach);
+
+        // Everything outside the near / far planes is not rendered, so it is not pickable either
+        if (center_depth + reach + margin < camera.near_plane || center_depth - reach - margin > camera.far_plane)
+        {
+            continue;
+        }
+
+        float t_enter = 0.0f;
+        float t_exit  = 0.0f;
+        if (!intersect_ray_aabb(ray_origin, ray_direction, bucket.aabb.min - margin, bucket.aabb.max + margin, t_enter, t_exit))
+        {
+            continue;
+        }
+
+        // A perspective ray starts at the camera, a box that ends before the ray origin is behind the camera.
+        // An orthographic ray origin sits on the camera plane, the box may legitimately lie behind it.
+        if (!is_ortho && t_exit < 0.0f)
+        {
+            continue;
+        }
+
+        candidates.push_back({t_enter, &bucket});
+    }
+
+    std::sort(candidates.begin(), candidates.end(),
+              [](const BucketCandidate& a, const BucketCandidate& b)
+              { return a.t_enter < b.t_enter; });
+
+    std::optional<glm::vec3> best_point{};
+    float                    best_t = std::numeric_limits<float>::max();
+
+    for (const BucketCandidate& candidate : candidates)
+    {
+        // Buckets are sorted by the distance at which the ray reaches them : a bucket entered beyond the best
+        // point found so far cannot contain anything closer to the camera
+        if (candidate.t_enter >= best_t)
+        {
+            break;
+        }
+
+        for (const PointCloudLOD* lod = candidate.bucket->lods; lod; lod = lod->next)
+        {
+            for (const PointIntensity& p : lod->points)
+            {
+                const glm::vec3 to_point = p.position - ray_origin;
+                const float     t        = glm::dot(to_point, ray_direction);
+
+                if (t >= best_t || (!is_ortho && t <= 0.0f))
+                {
+                    continue;
+                }
+
+                const float depth = glm::dot(p.position - camera.position, view_forward);
+
+                if (depth < camera.near_plane || depth > camera.far_plane)
+                {
+                    continue;
+                }
+
+                const float     radius  = radius_at_depth(depth);
+                const glm::vec3 off_ray = to_point - t * ray_direction;
+                if (glm::dot(off_ray, off_ray) > radius * radius)
+                {
+                    continue;
+                }
+
+                best_point = p.position;
+                best_t     = t;
+            }
+        }
+    }
+
+    return best_point;
 }
