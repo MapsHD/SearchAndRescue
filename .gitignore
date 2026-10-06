@@ -1,3 +1,6 @@
 build
 imgui.ini
 .vscode
+
+# MacOS directory metadatas
+.DS_Store
