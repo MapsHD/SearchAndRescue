@@ -78,9 +78,9 @@ struct MultiViewContext
 
     CameraMode camera_modes[MAX_CAMERAS]{
         CameraMode::CAMERA_MODE_FREE_ORBIT,
-        CameraMode::CAMERA_MODE_FREE_ORBIT,
-        CameraMode::CAMERA_MODE_FREE_ORBIT,
-        CameraMode::CAMERA_MODE_FREE_ORBIT};
+        CameraMode::CAMERA_MODE_LOCAL_X,
+        CameraMode::CAMERA_MODE_LOCAL_Y,
+        CameraMode::CAMERA_MODE_LOCAL_Z};
 
     // Locked-axis cameras only : axis length = distance of the camera from the stretcher pose along the view axis.
     // The near / far planes are the regular Camera::near_plane / Camera::far_plane depths measured from the camera.
@@ -107,10 +107,10 @@ struct MultiViewContext
         1.25f,
         1.25f};
 
-    ViewportCount active_count{ViewportCount::VIEWPORT_COUNT_ONE};
+    ViewportCount active_count{ViewportCount::VIEWPORT_COUNT_FOUR};
 
     // Layout used when active_count == 4 : 2x2 grid or 1 large viewport + 3 stacked on the right
-    ViewportLayout layout{ViewportLayout::VIEWPORT_LAYOUT_GRID};
+    ViewportLayout layout{ViewportLayout::VIEWPORT_LAYOUT_ONE_BIG};
 
     // Large-viewport layout : fraction of the window width taken by the large viewport (0.5 .. 0.75, default 2/3)
     float large_viewport_fraction{2.0f / 3.0f};
