@@ -309,9 +309,10 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
 
     for (uint32_t i = 0; i < MultiViewContext::MAX_CAMERAS; i++)
     {
-        Viewport vp               = ctx.viewport_for(i);
-        ctx.cameras[i].viewport_w = static_cast<float>(vp.w);
-        ctx.cameras[i].viewport_h = static_cast<float>(vp.h);
+        Viewport vp                    = ctx.viewport_for(i);
+        ctx.cameras[i].viewport_w      = static_cast<float>(vp.w);
+        ctx.cameras[i].viewport_h      = static_cast<float>(vp.h);
+        ctx.cameras[i].projection_type = i ? ProjectionType::PROJECTION_TYPE_ORTHOGRAPHIC : ProjectionType::PROJECTION_TYPE_PERSPECTIVE;
     }
 
     glfwMakeContextCurrent(window);
@@ -1622,8 +1623,20 @@ static void shutdown(ApplicationResources& runtime, ProjectData& project_data)
     }
 }
 
-int main()
+int main(const int32_t argc, const char** argv)
 {
+    std::vector<std::filesystem::path> argument_paths{};
+
+    for (int32_t i = 1; i < argc; i++)
+    {
+        std::filesystem::path path(argv[i]);
+
+        if (std::filesystem::exists(path))
+        {
+            argument_paths.push_back(path);
+        }
+    }
+
     GuiState     _gui_state     = {};
     UserSettings _user_settings = {};
     ProjectData  _project_data  = {};
