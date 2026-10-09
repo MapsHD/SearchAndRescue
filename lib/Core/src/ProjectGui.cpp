@@ -126,7 +126,7 @@ void ProjectDataImGUI(ProjectData& project_data, const UserSettings& user_settin
                     }
                     if (ImGui::IsItemHovered())
                     {
-                        ImGui::SetTooltip("Width of the large viewport as a percentage of the window\n(50% = half, 75% = three quarters, default 2/3)");
+                        ImGui::SetTooltip("Width of the large viewport as a percentage of the window\n(50%% = half, 75%% = three quarters, default 2/3)");
                     }
                 }
             }

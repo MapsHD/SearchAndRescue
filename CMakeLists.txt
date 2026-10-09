@@ -59,6 +59,7 @@ set(SPDLOG_BUILD_EXAMPLE   OFF CACHE BOOL "" FORCE)
 set(LASZIP_BUILD_STATIC    ON  CACHE BOOL "" FORCE)
 
 include(${REPOSITORY_DIRECTORY}/cmake/configure.cmake)
+include(${REPOSITORY_DIRECTORY}/cmake/disable_target_warnings.cmake)
 
 include(${REPOSITORY_DIRECTORY}/cmake/glad.cmake)
 include(${REPOSITORY_DIRECTORY}/cmake/imgui.cmake)
@@ -71,3 +72,11 @@ add_subdirectory(${EXTERNAL_DIRECTORY}/LASzip)
 
 add_subdirectory(lib/Core)
 add_subdirectory(app)
+
+if(WIN32)
+    disable_target_warnings(laszip3)
+    disable_target_warnings(laszip_api3)
+else()
+    disable_target_warnings(laszip)
+    disable_target_warnings(laszip_api)
+endif()
