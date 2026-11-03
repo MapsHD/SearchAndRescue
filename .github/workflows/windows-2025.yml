@@ -1,0 +1,53 @@
+name: Windows (Server 2025)
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.build_type }})
+    runs-on: windows-2025
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, Debug]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -S .
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} --parallel $env:NUMBER_OF_PROCESSORS
+
+      - name: Inspect binary
+        run: |
+          Get-Item build/app/${{ matrix.build_type }}/HDMapping-SearchAndRescue.exe | Format-List FullName, Length, LastWriteTime
+
+      - name: Upload binary artifact
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: HDMapping-SearchAndRescue-windows-2025
+          path: build/app/Release/HDMapping-SearchAndRescue.exe
+          if-no-files-found: error
+
