@@ -4,3 +4,8 @@ imgui.ini
 
 # MacOS directory metadatas
 .DS_Store
+# Python bytecode cache
+__pycache__/
+
+# Python virtual environment
+.venv/
