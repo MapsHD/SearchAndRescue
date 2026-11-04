@@ -11,12 +11,74 @@
 
 struct Program::ProgramIMPL
 {
-    uint32_t id = {};
+    uint32_t id    = {};
+    bool     valid = false;
 
     std::unordered_map<std::string, int32_t> uniform_location_cache = {};
 };
 
 static constexpr int32_t kInvalidLocation = -1;
+
+static const char* shader_stage_name(const uint32_t shader_type)
+{
+    switch (shader_type)
+    {
+    case GL_VERTEX_SHADER:
+        return "Vertex";
+    case GL_GEOMETRY_SHADER:
+        return "Geometry";
+    case GL_FRAGMENT_SHADER:
+        return "Fragment";
+    default:
+        return "Unknown";
+    }
+}
+
+static std::string shader_info_log(const uint32_t shader)
+{
+    int32_t length = 0;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+
+    if (length <= 1)
+    {
+        return "<empty info log>";
+    }
+
+    std::string info_log(static_cast<size_t>(length), '\0');
+    int32_t     written = 0;
+    glGetShaderInfoLog(shader, length, &written, info_log.data());
+    info_log.resize(static_cast<size_t>(written));
+
+    while (!info_log.empty() && (info_log.back() == '\n' || info_log.back() == '\r'))
+    {
+        info_log.pop_back();
+    }
+
+    return info_log;
+}
+
+static std::string program_info_log(const uint32_t program)
+{
+    int32_t length = 0;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+
+    if (length <= 1)
+    {
+        return "<empty info log>";
+    }
+
+    std::string info_log(static_cast<size_t>(length), '\0');
+    int32_t     written = 0;
+    glGetProgramInfoLog(program, length, &written, info_log.data());
+    info_log.resize(static_cast<size_t>(written));
+
+    while (!info_log.empty() && (info_log.back() == '\n' || info_log.back() == '\r'))
+    {
+        info_log.pop_back();
+    }
+
+    return info_log;
+}
 
 Program::Program(const std::vector<ShaderDescriptor>& program_descriptor)
 {
@@ -24,6 +86,8 @@ Program::Program(const std::vector<ShaderDescriptor>& program_descriptor)
 
     _impl->id                     = UINT32_MAX;
     _impl->uniform_location_cache = {};
+
+    bool all_compiled = true;
 
     std::vector<uint32_t> shaders = {};
     for (const ShaderDescriptor& shader_descriptor : program_descriptor)
@@ -38,13 +102,8 @@ Program::Program(const std::vector<ShaderDescriptor>& program_descriptor)
 
         if (!compilation_status)
         {
-            int32_t info_log_length = 0;
-            glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &info_log_length);
-
-            std::vector<char> info_log(info_log_length);
-            glGetShaderInfoLog(shader, info_log_length, &info_log_length, info_log.data());
-
-            spdlog::error("Failed to validate shader compilation: {}", info_log.data());
+            all_compiled = false;
+            spdlog::error("{} shader failed to compile: {}", shader_stage_name(shader_descriptor.shader_type), shader_info_log(shader));
         }
 
         shaders.push_back(shader);
@@ -64,14 +123,10 @@ Program::Program(const std::vector<ShaderDescriptor>& program_descriptor)
 
     if (!link_status)
     {
-        int32_t info_log_length = 0;
-        glGetProgramiv(_impl->id, GL_INFO_LOG_LENGTH, &info_log_length);
-
-        std::vector<char> info_log(info_log_length);
-        glGetProgramInfoLog(_impl->id, info_log_length, &info_log_length, info_log.data());
-
-        spdlog::error("Failed to validate program linking: {}", info_log.data());
+        spdlog::error("Program failed to link: {}", program_info_log(_impl->id));
     }
+
+    _impl->valid = all_compiled && link_status == GL_TRUE;
 
     for (const uint32_t shader : shaders)
     {
@@ -109,6 +164,11 @@ Program::~Program()
 uint32_t Program::GetID() const
 {
     return _impl->id;
+}
+
+bool Program::IsValid() const
+{
+    return _impl->valid;
 }
 
 void Program::Bind()

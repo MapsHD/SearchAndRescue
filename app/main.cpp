@@ -344,16 +344,33 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     runtime.render_resources   = std::make_unique<RenderResources>();
     RenderResources& resources = *runtime.render_resources;
 
-    resources.origin_program.reset(make_program(GetProgramShaderSources_Origin()));
-    resources.camera_target_program.reset(make_program(GetProgramShaderSources_CameraTarger()));
-    resources.point_cloud_program.reset(make_program(GetProgramShaderSources_PointCloud()));
-    resources.point_cloud_color_map_program.reset(make_program(GetProgramShaderSources_PointCloudColorMap()));
-    resources.trajectory_program.reset(make_program(GetProgramShaderSources_Trajectory()));
-    resources.trajectory_axes_program.reset(make_program(GetProgramShaderSources_TrajectoryOrientations()));
-    resources.stretcher_program.reset(make_program(GetProgramShaderSources_Stretcher()));
-    resources.bounding_box_program.reset(make_program(GetProgramShaderSources_BoundingBox()));
-    resources.bounding_box_stretcher_program.reset(make_program(GetProgramShaderSources_BoundingBoxStretcher()));
-    resources.colored_line_program.reset(make_program(GetProgramShaderSources_ColoredLine()));
+    auto build_program = [](std::unique_ptr<Program>& program, const ProgramShaderSources& sources, const char* name)
+    {
+        program.reset(make_program(sources));
+        if (!program->IsValid())
+        {
+            spdlog::critical("Shader program [{}] failed to compile or link!", name);
+            return false;
+        }
+        return true;
+    };
+
+    bool programs_valid = true;
+    programs_valid      = build_program(resources.origin_program, GetProgramShaderSources_Origin(), "Origin") && programs_valid;
+    programs_valid      = build_program(resources.camera_target_program, GetProgramShaderSources_CameraTarger(), "CameraTarget") && programs_valid;
+    programs_valid      = build_program(resources.point_cloud_program, GetProgramShaderSources_PointCloud(), "PointCloud") && programs_valid;
+    programs_valid      = build_program(resources.point_cloud_color_map_program, GetProgramShaderSources_PointCloudColorMap(), "PointCloudColorMap") && programs_valid;
+    programs_valid      = build_program(resources.trajectory_program, GetProgramShaderSources_Trajectory(), "Trajectory") && programs_valid;
+    programs_valid      = build_program(resources.trajectory_axes_program, GetProgramShaderSources_TrajectoryOrientations(), "TrajectoryOrientations") && programs_valid;
+    programs_valid      = build_program(resources.stretcher_program, GetProgramShaderSources_Stretcher(), "Stretcher") && programs_valid;
+    programs_valid      = build_program(resources.bounding_box_program, GetProgramShaderSources_BoundingBox(), "BoundingBox") && programs_valid;
+    programs_valid      = build_program(resources.bounding_box_stretcher_program, GetProgramShaderSources_BoundingBoxStretcher(), "BoundingBoxStretcher") && programs_valid;
+    programs_valid      = build_program(resources.colored_line_program, GetProgramShaderSources_ColoredLine(), "ColoredLine") && programs_valid;
+
+    if (!programs_valid)
+    {
+        return false;
+    }
 
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();

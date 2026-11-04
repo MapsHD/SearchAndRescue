@@ -26,6 +26,7 @@ public:
     ~Program();
 
     uint32_t GetID() const;
+    bool     IsValid() const;
 
     void Bind();
     void Unbind();
