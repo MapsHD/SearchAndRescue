@@ -52,19 +52,14 @@
     #define HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH 0
 #endif
 
-#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 1;
-#else
-static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
-static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 6;
-#endif
 
 static constexpr uint32_t DEFAULT_WINDOW_WIDTH  = 1600;
 static constexpr uint32_t DEFAULT_WINDOW_HEIGHT = 900;
 
 static constexpr const char* WINDOW_TITLE =
-    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH) " - HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1 = " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1) " - HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 = " CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410);
+    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH);
 
 static constexpr ImGuiDockNodeFlags DOCKSPACE_FLAGS = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -351,21 +346,21 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
     const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
-    resources.origin_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
+    resources.origin_buffer = std::make_unique<Buffer>(BufferUsage::Static, std_vector_size(origin), origin.data());
     resources.origin_vao    = std::make_unique<VertexArray>(
-        std::vector<VertexBufferBinding>{{resources.origin_buffer.get(), false, layout_color_point, 0}}, nullptr, false);
+        std::vector<VertexBufferBinding>{{resources.origin_buffer.get(), false, layout_color_point}}, nullptr, false);
 
-    resources.target_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
+    resources.target_buffer = std::make_unique<Buffer>(BufferUsage::Static, std_vector_size(target), target.data());
     resources.target_vao    = std::make_unique<VertexArray>(
-        std::vector<VertexBufferBinding>{{resources.target_buffer.get(), false, layout_point, 0}}, nullptr, false);
+        std::vector<VertexBufferBinding>{{resources.target_buffer.get(), false, layout_point}}, nullptr, false);
 
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
-    _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
-    _project_data.collision_points_vao = new VertexArray({{_project_data.collision_points_vbo, false, layout_point, 0}}, nullptr, false);
+    _project_data.collision_points_vbo = new Buffer(BufferUsage::Dynamic, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
+    _project_data.collision_points_vao = new VertexArray({{_project_data.collision_points_vbo, false, layout_point}}, nullptr, false);
 
     // Measurement lines : pre-allocated GPU buffer, 2 coloured vertices per completed entry
-    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
-    _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored, 0}}, nullptr, false);
+    _project_data.measurement_line_vbo = new Buffer(BufferUsage::Dynamic, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
+    _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored}}, nullptr, false);
 
     IMGUI_CHECKVERSION();
     runtime.imgui_context  = ImGui::CreateContext();
