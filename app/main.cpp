@@ -55,6 +55,8 @@
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 1;
 
+static constexpr const char* IMGUI_GLSL_VERSION = "#version 410 core";
+
 static constexpr uint32_t DEFAULT_WINDOW_WIDTH  = 1600;
 static constexpr uint32_t DEFAULT_WINDOW_HEIGHT = 900;
 
@@ -284,7 +286,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     runtime.window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE, nullptr, nullptr);
     if (!runtime.window)
     {
-        spdlog::critical("Failed to create GLFW window!");
+        spdlog::critical("Failed to create GLFW window with an OpenGL {}.{} core context - the GPU driver, VM or remote session does not provide it!", DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR);
         return false;
     }
     GLFWwindow* window = runtime.window;
@@ -320,6 +322,21 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
         return false;
     }
     runtime.opengl_initialized = true;
+
+    if (!GLAD_GL_VERSION_4_1)
+    {
+        spdlog::critical("OpenGL {}.{} core is required, but the context reports {}.{}!", DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR, GLVersion.major, GLVersion.minor);
+        return false;
+    }
+
+    spdlog::info("OpenGL version      : {}", reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+    spdlog::info("OpenGL vendor       : {}", reinterpret_cast<const char*>(glGetString(GL_VENDOR)));
+    spdlog::info("OpenGL renderer     : {}", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+    spdlog::info("OpenGL GLSL version : {}", reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)));
+
+    GLfloat line_width_range[2] = {};
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, line_width_range);
+    spdlog::info("OpenGL line width   : [{}, {}]", line_width_range[0], line_width_range[1]);
 
     // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
@@ -373,7 +390,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     }
     runtime.imgui_glfw_initialized = true;
 
-    if (!ImGui_ImplOpenGL3_Init())
+    if (!ImGui_ImplOpenGL3_Init(IMGUI_GLSL_VERSION))
     {
         spdlog::critical("Failed to initialize ImGui OpenGL backend!");
         return false;

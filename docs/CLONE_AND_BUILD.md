@@ -1,5 +1,7 @@
 # Download, build and run:
 
+Requires a GPU and driver with OpenGL 4.1 core.
+
 ## Build and run from sources:
 
 ``` bash
@@ -15,8 +17,11 @@ cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
 # Build :
 cmake --build build --config Release -j 8
 
-# Run :
+# Run (Windows) :
 .\build\app\Release\HDMapping-SearchAndRescue.exe
+
+# Run (Linux, macOS) :
+./build/app/HDMapping-SearchAndRescue
 ```
 
 ## Run prebuilt:
