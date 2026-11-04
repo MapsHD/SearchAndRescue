@@ -40,16 +40,16 @@
 #define CONCATENATE_STRING_2(x) #x
 #define CONCATENATE_STRING(x) CONCATENATE_STRING_2(x)
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR 0
 #endif
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR 0
 #endif
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH 0
 #endif
 
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
@@ -61,7 +61,7 @@ static constexpr uint32_t DEFAULT_WINDOW_WIDTH  = 1600;
 static constexpr uint32_t DEFAULT_WINDOW_HEIGHT = 900;
 
 static constexpr const char* WINDOW_TITLE =
-    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH);
+    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH);
 
 static constexpr ImGuiDockNodeFlags DOCKSPACE_FLAGS = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -238,6 +238,16 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths)
     }
 }
 
+#ifndef NDEBUG
+static void drain_gl_errors(const char* where)
+{
+    for (GLenum error = glGetError(); error != GL_NO_ERROR; error = glGetError())
+    {
+        spdlog::error("OpenGL error 0x{:04X} at {}", error, where);
+    }
+}
+#endif
+
 static bool initialize(ApplicationResources& runtime, WindowContext& window_context)
 {
     ProjectData& _project_data = window_context.project_data;
@@ -273,9 +283,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-#endif
 
 #ifndef NDEBUG
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
@@ -333,10 +341,6 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     spdlog::info("OpenGL vendor       : {}", reinterpret_cast<const char*>(glGetString(GL_VENDOR)));
     spdlog::info("OpenGL renderer     : {}", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
     spdlog::info("OpenGL GLSL version : {}", reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)));
-
-    GLfloat line_width_range[2] = {};
-    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, line_width_range);
-    spdlog::info("OpenGL line width   : [{}, {}]", line_width_range[0], line_width_range[1]);
 
     // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
@@ -1111,19 +1115,16 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             // ORIGIN
             if (_user_settings.origin.draw_enable)
             {
-                glLineWidth(_user_settings.origin.width);
                 origin_program->Bind();
                 origin_program->PushUniform16F32("u_MVP", MVP);
                 origin_program->PushUniform1F32("u_Scale", _user_settings.origin.scale);
                 origin_vao->Bind();
                 origin_vao->DrawArray(GL_LINES, 6);
-                glLineWidth(1.0f);
             }
 
             // CAMERA_TARGET
             if (_user_settings.target.draw_enable)
             {
-                glLineWidth(_user_settings.target.width);
                 camera_target_program->Bind();
                 camera_target_program->PushUniform16F32("u_MVP", MVP);
                 camera_target_program->PushUniform3F32("u_Translation", cam.target);
@@ -1131,7 +1132,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 camera_target_program->PushUniform3F32("u_Color", _user_settings.target.color);
                 target_vao->Bind();
                 target_vao->DrawArray(GL_LINES, 6);
-                glLineWidth(1.0f);
             }
 
             // TRAJECTORY
@@ -1150,9 +1150,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 }
                 else
                 {
-                    glLineWidth(_user_settings.trajectory.width);
                     _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
-                    glLineWidth(1.0f);
                 }
                 if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_axes_vao)
                 {
@@ -1177,13 +1175,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     colored_line_program->PushUniform16F32("u_MVP", MVP);
                     _project_data.measurement_line_vao->Bind();
 
-                    for (size_t i = 0; i < entry_count; ++i)
-                    {
-                        glLineWidth(ms.entries[i].line_width);
-                        // Draw 2 vertices for each line segment starting at index i * 2
-                        _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(i * 2), 2);
-                    }
-                    glLineWidth(1.0f);
+                    _project_data.measurement_line_vao->DrawArray(GL_LINES, 0, static_cast<uint32_t>(entry_count * 2));
                 }
 
                 // MEASUREMENT PENDING POINT : draw a small yellow cross at the first picked point
@@ -1213,15 +1205,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             //  STRETCHER BBOX
             if (_user_settings.stretcher.draw_enable_bbox && (_project_data.stretcher_vertices.size() && _project_data.stretcher_indices.size()))
             {
-                glLineWidth(_user_settings.stretcher.bbox_width);
-
                 bounding_box_stretcher_program->Bind();
                 bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
                 bounding_box_stretcher_program->PushUniform3F32("u_Color", _user_settings.stretcher.bbox_color);
                 bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
                 _project_data.stretcher_aabb_vao->Bind();
                 _project_data.stretcher_aabb_vao->DrawArray(GL_LINES, 24);
-                glLineWidth(1.0f);
             }
 
             const bool draw_any_cave_lod = _user_settings.point_cloud.draw_enable_pc_out ||
@@ -1361,7 +1350,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                     if (is_in_obb && _user_settings.point_cloud.draw_enable_bbox_in_obb)
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb);
                         glm::vec3 red(1.0f, 0.0f, 0.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", red);
@@ -1369,13 +1357,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
 
-                        glLineWidth(1.0f);
-
                         continue;
                     }
                     else if (is_on_obb_proximity && _user_settings.point_cloud.draw_enable_bbox_in_obb_proximity)
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb_proximity);
                         glm::vec3 blue(0.0f, 0.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", blue);
@@ -1383,21 +1368,16 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
 
-                        glLineWidth(1.0f);
-
                         continue;
                     }
                     else if (_user_settings.point_cloud.draw_enable_bbox_out && !(is_in_obb || is_on_obb_proximity))
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width);
                         glm::vec3 white(1.0f, 1.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", white);
 
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
-
-                        glLineWidth(1.0f);
 
                         continue;
                     }
@@ -1592,6 +1572,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+#ifndef NDEBUG
+        drain_gl_errors("end of frame");
+#endif
 
         glfwSwapBuffers(window);
     }
