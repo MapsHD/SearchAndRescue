@@ -321,10 +321,6 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     }
     runtime.opengl_initialized = true;
 
-    // glEnable(GL_DEBUG_OUTPUT);
-    // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    // glDebugMessageCallback(ErrorCallback::OpenGL, nullptr);
-
     // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
 
