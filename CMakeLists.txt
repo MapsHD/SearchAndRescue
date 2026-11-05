@@ -29,6 +29,7 @@ endif()
 
 if (MSVC)
   add_compile_options(/utf-8)
+  add_compile_options(/MP2)
 endif()
 
 set(GLFW_USE_HYBRID_HPG    ON CACHE BOOL "" FORCE)

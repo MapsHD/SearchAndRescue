@@ -18,6 +18,7 @@
 
 #include <implot.h>
 
+#include <algorithm>
 #include <memory>
 #include <random>
 

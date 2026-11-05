@@ -28,3 +28,9 @@ target_include_directories(implot
         ${EXTERNAL_DIRECTORY}/imgui
         ${EXTERNAL_DIRECTORY}/imgui/backends
 )
+
+# Only float plots are used; instantiating ImPlot templates for every numeric type dominates build time.
+target_compile_definitions(implot
+    PUBLIC
+        "IMPLOT_CUSTOM_NUMERIC_TYPES=(float)"
+)

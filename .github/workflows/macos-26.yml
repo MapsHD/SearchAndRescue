@@ -22,9 +22,13 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install Ninja
+        run: |
+          command -v ninja || brew install ninja
+
       - name: Configure CMake
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build

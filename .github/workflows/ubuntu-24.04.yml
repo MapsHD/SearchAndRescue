@@ -32,11 +32,12 @@ jobs:
             libxcursor-dev \
             libxi-dev \
             libxext-dev \
-            libgl-dev
+            libgl-dev \
+            ninja-build
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build
