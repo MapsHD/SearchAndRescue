@@ -187,7 +187,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             // ImGui::BeginDisabled(!user_settings.origin.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.origin.scale, 0.1f, 1.0f, FLT_MAX);
-                ImGui::DragFloat("Width", &user_settings.origin.width, 0.25f, 1.0f, 8.0f);
             }
             // ImGui::EndDisabled();
             ImGui::TreePop();
@@ -200,7 +199,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             // ImGui::BeginDisabled(!user_settings.target.draw_enable);
             {
                 ImGui::DragFloat("Scale", &user_settings.target.scale, 0.1f, 1.0f, FLT_MAX);
-                ImGui::DragFloat("Width", &user_settings.target.width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.target.color));
             }
             // ImGui::EndDisabled();
@@ -220,7 +218,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                     user_settings.trajectory.display_mode = static_cast<TrajectoryDisplayMode>(display_mode);
                 }
 
-                ImGui::DragFloat("Width", &user_settings.trajectory.width, 0.25f, 1.0f, 8.0f);
                 ImGui::DragFloat("Point size", &user_settings.trajectory.point_size, 0.25f, 1.0f, 16.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.trajectory.color));
                 ImGui::Checkbox("Draw orientation axes", &user_settings.trajectory.draw_orientations);
@@ -253,7 +250,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
             ImGui::Checkbox("Enable draw (BBOX)", &user_settings.stretcher.draw_enable_bbox);
             // ImGui::BeginDisabled(!user_settings.stretcher.draw_enable_bbox);
             {
-                ImGui::DragFloat("Width", &user_settings.stretcher.bbox_width, 0.25f, 1.0f, 8.0f);
                 ImGui::ColorEdit3("Color", glm::value_ptr(user_settings.stretcher.bbox_color));
             }
             // ImGui::EndDisabled();
@@ -282,10 +278,6 @@ void UserSettingsImGUI(UserSettings& user_settings, bool& open)
                     user_settings.point_cloud.colormap = static_cast<ColorMapType>(colormap);
                 }
             }
-
-            ImGui::DragFloat("BBOX width", &user_settings.point_cloud.bbox_width, 0.25f, 1.0f, 8.0f);
-            ImGui::DragFloat("BBOX width in OBB", &user_settings.point_cloud.bbox_width_in_obb, 0.25f, 1.0f, 8.0f);
-            ImGui::DragFloat("BBOX width in OBB proximity", &user_settings.point_cloud.bbox_width_in_obb_proximity, 0.25f, 1.0f, 8.0f);
 
             ImGui::Checkbox("Enable draw BBOX (master)", &user_settings.point_cloud.draw_enable_bbox);
             // ImGui::BeginDisabled(!user_settings.point_cloud.draw_enable_bbox);
@@ -335,18 +327,15 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
           {"trajectory_load_every_nth", user_settings.io.trajectory_load_every_nth}}},
         {"origin",
          {{"draw_enable", user_settings.origin.draw_enable},
-          {"scale", user_settings.origin.scale},
-          {"width", user_settings.origin.width}}},
+          {"scale", user_settings.origin.scale}}},
         {"target",
          {{"draw_enable", user_settings.target.draw_enable},
           {"scale", user_settings.target.scale},
-          {"width", user_settings.target.width},
           {"color", Vec3ToJSON(user_settings.target.color)}}},
         {"trajectory",
          {{"draw_enable", user_settings.trajectory.draw_enable},
           {"draw_orientations", user_settings.trajectory.draw_orientations},
           {"orientation_axis_length", user_settings.trajectory.orientation_axis_length},
-          {"width", user_settings.trajectory.width},
           {"point_size", user_settings.trajectory.point_size},
           {"display_mode", static_cast<int32_t>(user_settings.trajectory.display_mode)},
           {"color", Vec3ToJSON(user_settings.trajectory.color)}}},
@@ -358,13 +347,9 @@ bool UserSettingsSaveJSON(const std::filesystem::path& path, const UserSettings&
         {"stretcher",
          {{"draw_enable", user_settings.stretcher.draw_enable},
           {"draw_enable_bbox", user_settings.stretcher.draw_enable_bbox},
-          {"bbox_width", user_settings.stretcher.bbox_width},
           {"bbox_color", Vec3ToJSON(user_settings.stretcher.bbox_color)}}},
         {"point_cloud",
          {{"point_size", user_settings.point_cloud.point_size},
-          {"bbox_width", user_settings.point_cloud.bbox_width},
-          {"bbox_width_in_obb", user_settings.point_cloud.bbox_width_in_obb},
-          {"bbox_width_in_obb_proximity", user_settings.point_cloud.bbox_width_in_obb_proximity},
           {"draw_enable_bbox", user_settings.point_cloud.draw_enable_bbox},
           {"draw_enable_bbox_out", user_settings.point_cloud.draw_enable_bbox_out},
           {"draw_enable_bbox_in_obb", user_settings.point_cloud.draw_enable_bbox_in_obb},
@@ -455,17 +440,14 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     // origin
     TryRead(origin, "origin", "draw_enable", loaded.origin.draw_enable);
     TryRead(origin, "origin", "scale", loaded.origin.scale);
-    TryRead(origin, "origin", "width", loaded.origin.width);
 
     // target
     TryRead(target, "target", "draw_enable", loaded.target.draw_enable);
     TryRead(target, "target", "scale", loaded.target.scale);
-    TryRead(target, "target", "width", loaded.target.width);
     Vec3FromJSON(target, "color", loaded.target.color);
 
     // trajectory
     TryRead(trajectory, "trajectory", "draw_enable", loaded.trajectory.draw_enable);
-    TryRead(trajectory, "trajectory", "width", loaded.trajectory.width);
     TryRead(trajectory, "trajectory", "point_size", loaded.trajectory.point_size);
     Vec3FromJSON(trajectory, "color", loaded.trajectory.color);
 
@@ -544,14 +526,10 @@ bool UserSettingsLoadJSON(const std::filesystem::path& path, UserSettings& user_
     // stretcher
     TryRead(stretcher, "stretcher", "draw_enable", loaded.stretcher.draw_enable);
     TryRead(stretcher, "stretcher", "draw_enable_bbox", loaded.stretcher.draw_enable_bbox);
-    TryRead(stretcher, "stretcher", "bbox_width", loaded.stretcher.bbox_width);
     Vec3FromJSON(stretcher, "bbox_color", loaded.stretcher.bbox_color);
 
     // point_cloud
     TryRead(point_cloud, "point_cloud", "point_size", loaded.point_cloud.point_size);
-    TryRead(point_cloud, "point_cloud", "bbox_width", loaded.point_cloud.bbox_width);
-    TryRead(point_cloud, "point_cloud", "bbox_width_in_obb", loaded.point_cloud.bbox_width_in_obb);
-    TryRead(point_cloud, "point_cloud", "bbox_width_in_obb_proximity", loaded.point_cloud.bbox_width_in_obb_proximity);
     TryRead(point_cloud, "point_cloud", "draw_enable_bbox", loaded.point_cloud.draw_enable_bbox);
     TryRead(point_cloud, "point_cloud", "draw_enable_bbox_out", loaded.point_cloud.draw_enable_bbox_out);
     TryRead(point_cloud, "point_cloud", "draw_enable_bbox_in_obb", loaded.point_cloud.draw_enable_bbox_in_obb);

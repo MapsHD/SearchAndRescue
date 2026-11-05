@@ -18,6 +18,7 @@
 
 #include <implot.h>
 
+#include <algorithm>
 #include <memory>
 #include <random>
 
@@ -40,31 +41,28 @@
 #define CONCATENATE_STRING_2(x) #x
 #define CONCATENATE_STRING(x) CONCATENATE_STRING_2(x)
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR 0
 #endif
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR 0
 #endif
 
-#ifndef HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH
-    #define HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH 0
+#ifndef HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH
+    #define HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH 0
 #endif
 
-#if HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
 static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 1;
-#else
-static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR = 4;
-static constexpr uint32_t DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR = 6;
-#endif
+
+static constexpr const char* IMGUI_GLSL_VERSION = "#version 410 core";
 
 static constexpr uint32_t DEFAULT_WINDOW_WIDTH  = 1600;
 static constexpr uint32_t DEFAULT_WINDOW_HEIGHT = 900;
 
 static constexpr const char* WINDOW_TITLE =
-    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_VERSION_PATCH) " - HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1 = " CONCATENATE_STRING(HDMAPPING_REARCH_AND_RESCUE_USE_OPENGL_4_1) " - HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410 = " CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_USE_GLSL_410);
+    "HDMapping-SearchAndRescue : " CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_MAJOR) "." CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_MINOR) "." CONCATENATE_STRING(HDMAPPING_SEARCH_AND_RESCUE_VERSION_PATCH);
 
 static constexpr ImGuiDockNodeFlags DOCKSPACE_FLAGS = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -241,6 +239,16 @@ static void drop_callback(GLFWwindow* window, int count, const char** paths)
     }
 }
 
+#ifndef NDEBUG
+static void drain_gl_errors(const char* where)
+{
+    for (GLenum error = glGetError(); error != GL_NO_ERROR; error = glGetError())
+    {
+        spdlog::error("OpenGL error 0x{:04X} at {}", error, where);
+    }
+}
+#endif
+
 static bool initialize(ApplicationResources& runtime, WindowContext& window_context)
 {
     ProjectData& _project_data = window_context.project_data;
@@ -276,9 +284,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-#ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-#endif
 
 #ifndef NDEBUG
     glfwWindowHint(GLFW_CONTEXT_NO_ERROR, GLFW_FALSE);
@@ -289,7 +295,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     runtime.window = glfwCreateWindow(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, WINDOW_TITLE, nullptr, nullptr);
     if (!runtime.window)
     {
-        spdlog::critical("Failed to create GLFW window!");
+        spdlog::critical("Failed to create GLFW window with an OpenGL {}.{} core context - the GPU driver, VM or remote session does not provide it!", DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR);
         return false;
     }
     GLFWwindow* window = runtime.window;
@@ -326,9 +332,16 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     }
     runtime.opengl_initialized = true;
 
-    // glEnable(GL_DEBUG_OUTPUT);
-    // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    // glDebugMessageCallback(ErrorCallback::OpenGL, nullptr);
+    if (!GLAD_GL_VERSION_4_1)
+    {
+        spdlog::critical("OpenGL {}.{} core is required, but the context reports {}.{}!", DEFAULT_WINDOW_OPENGL_CONTEXT_MAJOR, DEFAULT_WINDOW_OPENGL_CONTEXT_MINOR, GLVersion.major, GLVersion.minor);
+        return false;
+    }
+
+    spdlog::info("OpenGL version      : {}", reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+    spdlog::info("OpenGL vendor       : {}", reinterpret_cast<const char*>(glGetString(GL_VENDOR)));
+    spdlog::info("OpenGL renderer     : {}", reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
+    spdlog::info("OpenGL GLSL version : {}", reinterpret_cast<const char*>(glGetString(GL_SHADING_LANGUAGE_VERSION)));
 
     // glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_DEPTH_TEST);
@@ -336,36 +349,53 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     runtime.render_resources   = std::make_unique<RenderResources>();
     RenderResources& resources = *runtime.render_resources;
 
-    resources.origin_program.reset(make_program(GetProgramShaderSources_Origin()));
-    resources.camera_target_program.reset(make_program(GetProgramShaderSources_CameraTarger()));
-    resources.point_cloud_program.reset(make_program(GetProgramShaderSources_PointCloud()));
-    resources.point_cloud_color_map_program.reset(make_program(GetProgramShaderSources_PointCloudColorMap()));
-    resources.trajectory_program.reset(make_program(GetProgramShaderSources_Trajectory()));
-    resources.trajectory_axes_program.reset(make_program(GetProgramShaderSources_TrajectoryOrientations()));
-    resources.stretcher_program.reset(make_program(GetProgramShaderSources_Stretcher()));
-    resources.bounding_box_program.reset(make_program(GetProgramShaderSources_BoundingBox()));
-    resources.bounding_box_stretcher_program.reset(make_program(GetProgramShaderSources_BoundingBoxStretcher()));
-    resources.colored_line_program.reset(make_program(GetProgramShaderSources_ColoredLine()));
+    auto build_program = [](std::unique_ptr<Program>& program, const ProgramShaderSources& sources, const char* name)
+    {
+        program.reset(make_program(sources));
+        if (!program->IsValid())
+        {
+            spdlog::critical("Shader program [{}] failed to compile or link!", name);
+            return false;
+        }
+        return true;
+    };
+
+    bool programs_valid = true;
+    programs_valid      = build_program(resources.origin_program, GetProgramShaderSources_Origin(), "Origin") && programs_valid;
+    programs_valid      = build_program(resources.camera_target_program, GetProgramShaderSources_CameraTarger(), "CameraTarget") && programs_valid;
+    programs_valid      = build_program(resources.point_cloud_program, GetProgramShaderSources_PointCloud(), "PointCloud") && programs_valid;
+    programs_valid      = build_program(resources.point_cloud_color_map_program, GetProgramShaderSources_PointCloudColorMap(), "PointCloudColorMap") && programs_valid;
+    programs_valid      = build_program(resources.trajectory_program, GetProgramShaderSources_Trajectory(), "Trajectory") && programs_valid;
+    programs_valid      = build_program(resources.trajectory_axes_program, GetProgramShaderSources_TrajectoryOrientations(), "TrajectoryOrientations") && programs_valid;
+    programs_valid      = build_program(resources.stretcher_program, GetProgramShaderSources_Stretcher(), "Stretcher") && programs_valid;
+    programs_valid      = build_program(resources.bounding_box_program, GetProgramShaderSources_BoundingBox(), "BoundingBox") && programs_valid;
+    programs_valid      = build_program(resources.bounding_box_stretcher_program, GetProgramShaderSources_BoundingBoxStretcher(), "BoundingBoxStretcher") && programs_valid;
+    programs_valid      = build_program(resources.colored_line_program, GetProgramShaderSources_ColoredLine(), "ColoredLine") && programs_valid;
+
+    if (!programs_valid)
+    {
+        return false;
+    }
 
     const std::vector<VertexBufferAttributeLayout> layout_color_point = opengl_vertex_array_get_vertex_layout<ColorPoint>();
     const std::vector<VertexBufferAttributeLayout> layout_point       = opengl_vertex_array_get_vertex_layout<Point>();
     const std::vector<VertexBufferAttributeLayout> layout_colored     = opengl_vertex_array_get_vertex_layout<ColoredVertex>();
 
-    resources.origin_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(origin), origin.data());
+    resources.origin_buffer = std::make_unique<Buffer>(BufferUsage::Static, std_vector_size(origin), origin.data());
     resources.origin_vao    = std::make_unique<VertexArray>(
-        std::vector<VertexBufferBinding>{{resources.origin_buffer.get(), false, layout_color_point, 0}}, nullptr, false);
+        std::vector<VertexBufferBinding>{{resources.origin_buffer.get(), false, layout_color_point}}, nullptr, false);
 
-    resources.target_buffer = std::make_unique<Buffer>(GL_DYNAMIC_STORAGE_BIT, std_vector_size(target), target.data());
+    resources.target_buffer = std::make_unique<Buffer>(BufferUsage::Static, std_vector_size(target), target.data());
     resources.target_vao    = std::make_unique<VertexArray>(
-        std::vector<VertexBufferBinding>{{resources.target_buffer.get(), false, layout_point, 0}}, nullptr, false);
+        std::vector<VertexBufferBinding>{{resources.target_buffer.get(), false, layout_point}}, nullptr, false);
 
     // Collision points : pre-allocated GPU buffer, filled each frame with positions of first-LOD points inside the stretcher OBB
-    _project_data.collision_points_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
-    _project_data.collision_points_vao = new VertexArray({{_project_data.collision_points_vbo, false, layout_point, 0}}, nullptr, false);
+    _project_data.collision_points_vbo = new Buffer(BufferUsage::Dynamic, ProjectData::COLLISION_POINTS_CAPACITY * sizeof(Point), nullptr);
+    _project_data.collision_points_vao = new VertexArray({{_project_data.collision_points_vbo, false, layout_point}}, nullptr, false);
 
     // Measurement lines : pre-allocated GPU buffer, 2 coloured vertices per completed entry
-    _project_data.measurement_line_vbo = new Buffer(GL_DYNAMIC_STORAGE_BIT, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
-    _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored, 0}}, nullptr, false);
+    _project_data.measurement_line_vbo = new Buffer(BufferUsage::Dynamic, 2 * ProjectData::MEASUREMENT_LINE_CAPACITY * sizeof(ColoredVertex), nullptr);
+    _project_data.measurement_line_vao = new VertexArray({{_project_data.measurement_line_vbo, false, layout_colored}}, nullptr, false);
 
     IMGUI_CHECKVERSION();
     runtime.imgui_context  = ImGui::CreateContext();
@@ -382,7 +412,7 @@ static bool initialize(ApplicationResources& runtime, WindowContext& window_cont
     }
     runtime.imgui_glfw_initialized = true;
 
-    if (!ImGui_ImplOpenGL3_Init())
+    if (!ImGui_ImplOpenGL3_Init(IMGUI_GLSL_VERSION))
     {
         spdlog::critical("Failed to initialize ImGui OpenGL backend!");
         return false;
@@ -1086,19 +1116,16 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             // ORIGIN
             if (_user_settings.origin.draw_enable)
             {
-                glLineWidth(_user_settings.origin.width);
                 origin_program->Bind();
                 origin_program->PushUniform16F32("u_MVP", MVP);
                 origin_program->PushUniform1F32("u_Scale", _user_settings.origin.scale);
                 origin_vao->Bind();
                 origin_vao->DrawArray(GL_LINES, 6);
-                glLineWidth(1.0f);
             }
 
             // CAMERA_TARGET
             if (_user_settings.target.draw_enable)
             {
-                glLineWidth(_user_settings.target.width);
                 camera_target_program->Bind();
                 camera_target_program->PushUniform16F32("u_MVP", MVP);
                 camera_target_program->PushUniform3F32("u_Translation", cam.target);
@@ -1106,7 +1133,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 camera_target_program->PushUniform3F32("u_Color", _user_settings.target.color);
                 target_vao->Bind();
                 target_vao->DrawArray(GL_LINES, 6);
-                glLineWidth(1.0f);
             }
 
             // TRAJECTORY
@@ -1125,9 +1151,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                 }
                 else
                 {
-                    glLineWidth(_user_settings.trajectory.width);
                     _project_data.trajectory_positions_vao->DrawArray(GL_LINE_STRIP, _project_data.trajectory_positions.size());
-                    glLineWidth(1.0f);
                 }
                 if (_user_settings.trajectory.draw_orientations && _project_data.trajectory_axes_vao)
                 {
@@ -1152,13 +1176,7 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                     colored_line_program->PushUniform16F32("u_MVP", MVP);
                     _project_data.measurement_line_vao->Bind();
 
-                    for (size_t i = 0; i < entry_count; ++i)
-                    {
-                        glLineWidth(ms.entries[i].line_width);
-                        // Draw 2 vertices for each line segment starting at index i * 2
-                        _project_data.measurement_line_vao->DrawArray(GL_LINES, static_cast<uint32_t>(i * 2), 2);
-                    }
-                    glLineWidth(1.0f);
+                    _project_data.measurement_line_vao->DrawArray(GL_LINES, 0, static_cast<uint32_t>(entry_count * 2));
                 }
 
                 // MEASUREMENT PENDING POINT : draw a small yellow cross at the first picked point
@@ -1188,15 +1206,12 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
             //  STRETCHER BBOX
             if (_user_settings.stretcher.draw_enable_bbox && (_project_data.stretcher_vertices.size() && _project_data.stretcher_indices.size()))
             {
-                glLineWidth(_user_settings.stretcher.bbox_width);
-
                 bounding_box_stretcher_program->Bind();
                 bounding_box_stretcher_program->PushUniform16F32("u_MVP", MVP);
                 bounding_box_stretcher_program->PushUniform3F32("u_Color", _user_settings.stretcher.bbox_color);
                 bounding_box_stretcher_program->PushUniform16F32("u_Pose", stretcher_pose);
                 _project_data.stretcher_aabb_vao->Bind();
                 _project_data.stretcher_aabb_vao->DrawArray(GL_LINES, 24);
-                glLineWidth(1.0f);
             }
 
             const bool draw_any_cave_lod = _user_settings.point_cloud.draw_enable_pc_out ||
@@ -1336,7 +1351,6 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
                     if (is_in_obb && _user_settings.point_cloud.draw_enable_bbox_in_obb)
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb);
                         glm::vec3 red(1.0f, 0.0f, 0.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", red);
@@ -1344,13 +1358,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
 
-                        glLineWidth(1.0f);
-
                         continue;
                     }
                     else if (is_on_obb_proximity && _user_settings.point_cloud.draw_enable_bbox_in_obb_proximity)
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width_in_obb_proximity);
                         glm::vec3 blue(0.0f, 0.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", blue);
@@ -1358,21 +1369,16 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
 
-                        glLineWidth(1.0f);
-
                         continue;
                     }
                     else if (_user_settings.point_cloud.draw_enable_bbox_out && !(is_in_obb || is_on_obb_proximity))
                     {
-                        glLineWidth(_user_settings.point_cloud.bbox_width);
                         glm::vec3 white(1.0f, 1.0f, 1.0f);
 
                         bounding_box_program->PushUniform3F32("u_Color", white);
 
                         bucket.bbox_vao->Bind();
                         bucket.bbox_vao->DrawArray(GL_LINES, 24);
-
-                        glLineWidth(1.0f);
 
                         continue;
                     }
@@ -1567,6 +1573,10 @@ static void render_loop(const ApplicationResources& runtime, GuiState& _gui_stat
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+#ifndef NDEBUG
+        drain_gl_errors("end of frame");
+#endif
 
         glfwSwapBuffers(window);
     }

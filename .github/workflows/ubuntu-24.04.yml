@@ -1,15 +1,7 @@
 name: Linux (Ubuntu 24.04)
 
 on:
-  push:
-    branches: [ "**" ]
-  pull_request:
-    branches: [ "**" ]
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 permissions:
   contents: read
@@ -29,32 +21,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            cmake \
-            ninja-build \
-            xorg-dev \
+          sudo apt-get install -y --no-install-recommends \
             libx11-dev \
             libxrandr-dev \
             libxinerama-dev \
             libxcursor-dev \
             libxi-dev \
             libxext-dev \
-            libxxf86vm-dev \
-            libx11-xcb-dev \
-            libxkbcommon-dev \
-            libxkbcommon-x11-dev \
-            libgl1-mesa-dev \
-            libglu1-mesa-dev
+            libgl-dev \
+            ninja-build
 
       - name: Configure CMake
         run: |
-          cmake -B build -S . \
+          cmake -B build -S . -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build

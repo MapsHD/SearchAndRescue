@@ -64,7 +64,6 @@ struct VertexBufferBinding
     Buffer*                                  buffer           = nullptr;
     bool                                     buffer_ownership = false;
     std::vector<VertexBufferAttributeLayout> layout           = {};
-    uint32_t                                 binding_index    = 0;
 };
 
 class VertexArray

@@ -55,7 +55,6 @@ target_include_directories(Core
         ${EXTERNAL_DIRECTORY}/json/include
         ${EXTERNAL_DIRECTORY}/glfw/include
         ${EXTERNAL_DIRECTORY}/glad/include
-        ${EXTERNAL_DIRECTORY}/spdlog/include
         ${EXTERNAL_DIRECTORY}/imgui
         ${EXTERNAL_DIRECTORY}/imgui/backends
         ${EXTERNAL_DIRECTORY}/ImGuizmo/src
@@ -72,6 +71,7 @@ target_link_libraries(Core
         imgui
         implot
         imguizmo
+        spdlog::spdlog
 )
 
 if(WIN32)

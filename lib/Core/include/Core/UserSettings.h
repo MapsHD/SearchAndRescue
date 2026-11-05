@@ -29,14 +29,12 @@ struct UserSettings
     {
         bool  draw_enable = true;
         float scale       = 1.0f;
-        float width       = 1.0f;
     } origin;
 
     struct
     {
         bool      draw_enable = true;
         float     scale       = 1.0f;
-        float     width       = 1.0f;
         glm::vec3 color       = {1.0f, 1.0f, 1.0f};
     } target;
 
@@ -45,7 +43,6 @@ struct UserSettings
         bool      draw_enable             = true;
         bool      draw_orientations       = false;
         float     orientation_axis_length = 0.05f;
-        float     width                   = 1.0f;
         float     point_size              = 2.0f;
         glm::vec3 color                   = {1.0f, 1.0f, 1.0f};
 
@@ -76,17 +73,12 @@ struct UserSettings
     {
         bool      draw_enable      = true;
         bool      draw_enable_bbox = true;
-        float     bbox_width       = 1.0f;
         glm::vec3 bbox_color       = {0.0f, 1.0f, 1.0f};
     } stretcher;
 
     struct
     {
         float point_size = 1.0f;
-
-        float bbox_width                  = 1.0f;
-        float bbox_width_in_obb           = 4.0f;
-        float bbox_width_in_obb_proximity = 3.0f;
 
         bool draw_enable_bbox                  = false;
         bool draw_enable_bbox_out              = false;

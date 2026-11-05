@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  clang-format:
+    name: clang-format
+    uses: ./.github/workflows/clang-format.yml
+
+  ubuntu:
+    name: Linux (Ubuntu 24.04)
+    needs: clang-format
+    uses: ./.github/workflows/ubuntu-24.04.yml
+
+  macos:
+    name: macOS (Tahoe 26)
+    needs: clang-format
+    uses: ./.github/workflows/macos-26.yml
+
+  windows:
+    name: Windows (Server 2025)
+    needs: clang-format
+    uses: ./.github/workflows/windows-2025.yml
